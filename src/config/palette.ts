@@ -16,3 +16,11 @@ export function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
+
+const toLin = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+
+/** Palette colour in linear space (what shaders/additive blending work in). */
+export function hexToLinear(hex: string): [number, number, number] {
+  const [r, g, b] = hexToRgb(hex);
+  return [toLin(r), toLin(g), toLin(b)];
+}
