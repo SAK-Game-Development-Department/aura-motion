@@ -42,6 +42,8 @@ export function judgePlacement(b: BodySnapshot | null, o: PlacementOptions = {})
 }
 
 export class PresenceTracker {
+  constructor(private absentReturnMs: number = EXHIBIT.absentReturnMs) {}
+
   private okSince: number | null = null;
   private lastSeen = -Infinity;
   private firstSeen: number | null = null;
@@ -83,6 +85,6 @@ export class PresenceTracker {
 
   /** Booth considered empty → return to title. */
   empty(now: number): boolean {
-    return this.absentFor(now) >= EXHIBIT.absentReturnMs;
+    return this.absentFor(now) >= this.absentReturnMs;
   }
 }

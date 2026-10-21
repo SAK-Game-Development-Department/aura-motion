@@ -16,6 +16,8 @@ export type SynthScript = (t: number) => SynthBody | null;
 export class SynthSource extends PulledSource {
   readonly kind = 'synth' as const;
   private t0 = -1;
+  /** When true, scripts receive the absolute frame time instead of time since start. */
+  absolute = false;
   constructor(
     public script: SynthScript,
     fps = 30,
@@ -27,7 +29,7 @@ export class SynthSource extends PulledSource {
 
   protected produce(t: number): PoseFrame | null {
     if (this.t0 < 0) this.t0 = t;
-    const b = this.script(t - this.t0);
+    const b = this.script(this.absolute ? t : t - this.t0);
     const poses: Landmark[][] = [];
     if (b) poses.push(jitter(buildLandmarks(b), this.noise, new Rng(this.seed ^ Math.floor(t))));
     return { t, poses, aspect: 16 / 9, luma: 0.4 };

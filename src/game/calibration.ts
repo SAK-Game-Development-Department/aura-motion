@@ -42,13 +42,26 @@ export class LatencyCalibrator {
   private det = new ClapDetector();
 
   /** startT: source-clock time when calibration begins. */
-  constructor(readonly startT: number) {
+  constructor(
+    readonly startT: number,
+    readonly pulseCount: number = LATENCY.calibPulses,
+    readonly intervalMs: number = LATENCY.calibIntervalMs,
+  ) {
     this.pulses = [];
-    for (let i = 0; i < LATENCY.calibPulses; i++) this.pulses.push(startT + LATENCY.calibLeadInMs + i * LATENCY.calibIntervalMs);
+    for (let i = 0; i < pulseCount; i++) this.pulses.push(startT + LATENCY.calibLeadInMs + i * intervalMs);
   }
 
   get endT(): number {
-    return this.pulses[this.pulses.length - 1]! + LATENCY.calibIntervalMs;
+    return this.pulses[this.pulses.length - 1]! + this.intervalMs;
+  }
+
+  get lastClap(): number | null {
+    return this.claps.length ? this.claps[this.claps.length - 1]! : null;
+  }
+
+  /** Number of pulses that already have a matching clap (live feedback). */
+  matched(): number {
+    return this.pulses.filter((p) => this.claps.some((c) => Math.abs(c - p) <= LATENCY.calibAcceptMs)).length;
   }
 
   feed(b: BodySnapshot): number | null {
@@ -67,7 +80,7 @@ export class LatencyCalibrator {
       }
       if (best !== null) samples.push(best);
     }
-    if (samples.length < LATENCY.calibMinSamples) {
+    if (samples.length < Math.min(LATENCY.calibMinSamples, this.pulseCount)) {
       return { offsetMs: LATENCY.defaultOffsetMs, samples, accepted: false };
     }
     return { offsetMs: clamp(median(samples), LATENCY.minOffsetMs, LATENCY.maxOffsetMs), samples, accepted: true };
