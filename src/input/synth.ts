@@ -130,6 +130,9 @@ export interface AutoplayOptions {
   missRate?: number;
   seed?: number;
   seated?: boolean;
+  /** Override body framing (attract demo stands a little further back). */
+  height?: number;
+  floorY?: number;
 }
 
 interface Key {
@@ -147,6 +150,8 @@ export function autoplayScript(stage: Stage, o: AutoplayOptions): SynthScript {
   const rng = new Rng(o.seed ?? 7);
   const base = defaultBody();
   base.seated = o.seated ?? stage.seated;
+  if (o.height) base.height = o.height;
+  if (o.floorY) base.floorY = o.floorY;
   const anchor = synthAnchor(base);
   const aspect = base.aspect;
   const offset = o.offsetMs ?? LATENCY.defaultOffsetMs;
@@ -250,7 +255,8 @@ export function autoplayScript(stage: Stage, o: AutoplayOptions): SynthScript {
 
 /** Attract-mode script: an autoplayed demo that loops forever. */
 export function attractScript(stage: Stage): SynthScript {
-  const play = autoplayScript(stage, { playStartRel: 1500, offsetMs: 0, errorMs: 40, seed: 3 });
+  // Smaller and lower than a real visitor so the title logo stays clear.
+  const play = autoplayScript(stage, { playStartRel: 1500, offsetMs: 0, errorMs: 40, seed: 3, height: 0.6, floorY: 0.95 });
   const loop = stage.durationMs + 3000;
   return (t) => play(t % loop);
 }

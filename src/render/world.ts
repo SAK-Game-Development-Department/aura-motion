@@ -57,6 +57,8 @@ export interface WorldFrame {
   energy: number;
   /** Hide game objects (title/results). */
   showGame: boolean;
+  /** 0..1 dims the light-line body and hand glows (results screen). */
+  bodyDim?: number;
 }
 
 const KEYPOINT_IDX = [LM.nose, LM.leftShoulder, LM.rightShoulder, LM.leftElbow, LM.rightElbow, LM.leftWrist, LM.rightWrist, LM.leftHip, LM.rightHip, LM.leftKnee, LM.rightKnee, LM.leftAnkle, LM.rightAnkle, LM.leftIndex, LM.rightIndex, LM.leftHip];
@@ -222,7 +224,7 @@ export class WorldView {
     g.begin();
     const beatPulse = Math.exp(-beatPhase * 6);
 
-    if (f.body?.present) this.drawBody(f.body, f.skeleton, f.particles, now);
+    if (f.body?.present) this.drawBody(f.body, f.skeleton, f.particles, now, 1 - (f.bodyDim ?? 0));
     if (f.showGame && f.session) this.drawGame(f, beatPulse);
     else this.walls.hideAll();
     if (f.calib && f.body?.present) this.drawCalib(f.calib, f.body);
@@ -233,12 +235,12 @@ export class WorldView {
     g.end();
   }
 
-  private drawBody(b: BodySnapshot, skeleton: boolean, particles: boolean, now: number): void {
+  private drawBody(b: BodySnapshot, skeleton: boolean, particles: boolean, now: number, k: number): void {
     const L = this.gfx.layout;
     const g = this.glyphs;
     const reveal = this.reveal;
     // Light-line skeleton: bright when it is the only silhouette, faint under particles.
-    const lineI = skeleton ? (particles ? 0.25 + (1 - reveal) * 0.7 : 0.95) : 0;
+    const lineI = (skeleton ? (particles ? 0.25 + (1 - reveal) * 0.7 : 0.95) : 0) * k;
     if (lineI > 0) {
       for (const [a, c] of BONES) {
         const p = b.lm[a];
@@ -261,8 +263,8 @@ export class WorldView {
       const r = JUDGE.handRadius * b.anchor.unit * L.k * 2.2;
       const rgb = h === 'L' ? C.cyan : C.magenta;
       const pulse = 0.85 + 0.15 * Math.sin(now / 160 + (h === 'L' ? 0 : 1.5));
-      g.add(Shape.Disk, p.x, p.y, r, r, 0, rgb, 0.7 * pulse);
-      g.add(Shape.Disk, p.x, p.y, r * 0.35, r * 0.35, 0, C.white, 0.9);
+      g.add(Shape.Disk, p.x, p.y, r, r, 0, rgb, 0.7 * pulse * Math.max(k, 0.5));
+      g.add(Shape.Disk, p.x, p.y, r * 0.35, r * 0.35, 0, C.white, 0.9 * Math.max(k, 0.5));
     }
   }
 

@@ -177,6 +177,8 @@ export class App {
       } else if (kind === 'autoplay') {
         const bot = new SynthSource(scripts.visit(1e12), 30);
         src = bot;
+      } else if (kind === 'empty') {
+        src = new SynthSource(scripts.absent(), 30);
       } else {
         src = new SynthSource(scripts.idle(), 30);
       }
@@ -555,6 +557,7 @@ export class App {
       calib: this.phase === 'calibrate' && this.calib ? { pulses: this.calib.pulses, now, intervalMs: this.calib.intervalMs, lastClap: this.calib.lastClap } : null,
       energy,
       showGame: this.phase === 'play' || (this.phase === 'title' && !!this.demo),
+      bodyDim: this.phase === 'results' ? 0.75 : 0,
     });
     const t3 = performance.now();
     this.gfx.render();

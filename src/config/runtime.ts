@@ -3,7 +3,7 @@
 import { EXHIBIT, LATENCY, STAGE } from './index';
 import { DEFAULT_FLAGS, parseFlags, type Flags } from './flags';
 
-export type SourceChoice = 'camera' | 'synth' | 'autoplay' | 'mouse' | 'replay';
+export type SourceChoice = 'camera' | 'synth' | 'autoplay' | 'mouse' | 'replay' | 'empty';
 
 export interface Runtime {
   source: SourceChoice;
@@ -38,7 +38,7 @@ export function readRuntime(search: string): Runtime {
   const seed = q.get('seed');
   const quality = q.get('quality');
   return {
-    source: ['camera', 'synth', 'autoplay', 'mouse', 'replay'].includes(src) ? src : 'camera',
+    source: ['camera', 'synth', 'autoplay', 'mouse', 'replay', 'empty'].includes(src) ? src : 'camera',
     replayUrl: q.get('replay'),
     flags: parseFlags(q.get('flags'), DEFAULT_FLAGS),
     seed: seed !== null && seed !== '' ? Number(seed) >>> 0 : null,

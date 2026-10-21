@@ -24,6 +24,8 @@ export class Background {
     const deep = vec3(...hexToLinear(PALETTE.voidDeep));
     const cyan = vec3(...hexToLinear(PALETTE.cyan));
     const amber = vec3(...hexToLinear(PALETTE.amber));
+    // Nebula is a brighter indigo (not cyan) so the void stays indigo-black.
+    const nebulaC = vec3(...hexToLinear('#3a4cc0'));
     mat.colorNode = (() => {
       const p = uv().sub(0.5).mul(vec2(this.uAspect, 1));
       const r = length(p);
@@ -34,13 +36,14 @@ export class Background {
       const n2 = mx_noise_float(vec3(p.mul(5.0).add(7.1), this.uTime.mul(0.07))).mul(0.5).add(0.5);
       const neb = n.mul(n2).mul(0.11).mul(this.uIntensity.mul(0.5).add(0.6));
       const tint = mix(cyan, amber, this.uWarm);
+      const nebTint = mix(nebulaC, amber, this.uWarm.mul(0.6));
       // Beat pulse: a soft ring expanding from the centre on each beat.
       const ringR = this.uBeat.mul(0.9);
       const ring = exp(abs(r.sub(ringR)).mul(-28.0)).mul(float(1).sub(this.uBeat)).mul(0.05).mul(this.uPulseAmp).mul(this.uIntensity);
       // Hit ripple.
       const rp = length(uv().sub(0.5).mul(vec2(this.uAspect, 1)).sub(this.uRippleCenter));
       const rip = exp(abs(rp.sub(this.uRipple.mul(0.8))).mul(-35.0)).mul(max(float(0), float(1).sub(this.uRipple))).mul(0.07).mul(this.uPulseAmp);
-      const col = base.add(tint.mul(neb.add(ring).add(rip))).add(vec3(this.uFlash));
+      const col = base.add(nebTint.mul(neb)).add(tint.mul(ring.add(rip))).add(vec3(this.uFlash));
       return vec4(col, 1);
     })();
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
