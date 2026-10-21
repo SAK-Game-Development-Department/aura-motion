@@ -12,7 +12,7 @@
 // texture from the tracker (docs/decisions.md D4).
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, float, hash, instanceIndex, instancedArray, length, max, min, mix, mx_noise_float, normalize, smoothstep, texture,
+  Fn, If, float, hash, instanceIndex, instancedArray, length, max, min, mix, mx_noise_float, smoothstep, texture,
   uniform, uniformArray, uv, vec2, vec3, vec4, clamp, select, abs, exp, sin, cos, dot,
 } from 'three/tsl';
 import { PALETTE, RENDER, hexToLinear } from '../../config';

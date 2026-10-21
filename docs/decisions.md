@@ -28,6 +28,16 @@
     `FilesetResolver.forVisionTasks(base, useModule=true)` で `vision_wasm_module_internal.js` が選ばれ、モジュール Worker でも読み込める（ソースで確認）
   - `VisionTaskOptions.canvas` は `HTMLCanvasElement | OffscreenCanvas` を受け付ける（`vision.d.ts` で確認）。Worker 内で `OffscreenCanvas` を渡せば GPU デリゲートを使える
   - フレームは `createImageBitmap(video, {resizeWidth: 640})` で作って transfer する（コピーしない）。推論後すぐに `close()` する
+- **検証結果（2026-10-22、ヘッドレス Chromium 156 + SwiftShader + 偽カメラ）**:
+  - 最初の実装では worker/GPU と worker/CPU がどちらも `ModuleFactory not set.` で失敗し、inline/GPU にフォールバックしていた
+  - 原因: MediaPipe は、タスクを1つ作るたびに `self.ModuleFactory = undefined` に戻す。モジュール Worker では WASM のローダーを `import()` で読み込むが、
+    2つ目のタスク（ImageSegmenter）のときには同じ URL がモジュールキャッシュから返され、再評価されないので ModuleFactory が設定されない
+    （`importScripts` を使うクラシックな経路では毎回スクリプトが実行されるので、この問題は起きない）
+  - 対策: Worker 内でローダーを自分で `import()` して default export（ModuleFactory）を保持し、各タスクを作る直前に `globalThis.ModuleFactory` に戻す（`src/input/tracking/core.ts`）
+  - 対策後は **worker/GPU で初期化と推論が動作した**（E2E の `camera.spec.ts` で、選ばれた経路をログに出す）
+  - もう1つの不具合: 推論が遅い環境で、メインスレッドが「結果が返らない」と判断して再送したフレームが Worker のキューに溜まり、遅延が 6〜11 秒まで増え続けた。
+    → Worker 側で「最新のフレームだけを処理する」（古いフレームは推論せずに close する）ように直した。遅延が溜まらなくなった
+  - SwiftShader は GPU を CPU でエミュレートするので、推論に約 0.4 秒かかる（約2fps）。実機の GPU での値は docs/venue-checklist.md A2/A6 で確認する
 - **実機での確認事項**（docs/venue-checklist.md）: どの経路が選ばれたかはデバッグオーバーレイの `tracking backend` に出る。展示PCで `worker/GPU` が選ばれ、30fps 以上出ることを確認する
 - **見直す条件**: 展示PCで worker/GPU が失敗した場合は、原因を調べてここに追記する
 
@@ -77,3 +87,9 @@
 - Playwright の Chromium（headless shell 156）で、`--enable-unsafe-webgpu` を付けると SwiftShader の WebGPU アダプタが取れる（2026-10-22 に確認）。
   付けなければ `requestAdapter()` は null になり、WebGL2（SwiftShader）にフォールバックする。どちらの経路もスクリーンショットで確認できる
 - 偽カメラ（`--use-fake-device-for-media-stream`）の映像には人が映っていないので、カメラの経路で確認できるのは「許可の流れ」と「トラッキングの初期化」まで。ゲームの流れは synth/replay で確認する
+
+## D12. 複数人が映る場合の輪郭
+- Selfie Segmenter は人物を区別しない（映っている全員が1枚のマスクになる）。プレイヤーの「ロック」は姿勢推定（ランドマーク）で行っているので、ゲームの判定には影響しない。
+  影響するのは粒子の見た目だけ（後ろの人も光る）。展示では、後ろの人も光るのは演出として許容する
+- 代替案（未実装。実機で負荷を測ってから判断する）: PoseLandmarker の `outputSegmentationMasks` を使えば、人物ごとのマスクが得られる。
+  ただし入力解像度のマスクを GPU から CPU に読み戻すコストがかかる

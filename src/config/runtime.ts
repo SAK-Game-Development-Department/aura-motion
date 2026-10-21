@@ -18,6 +18,8 @@ export interface Runtime {
   particles: number | null;
   /** Virtual time: every rendered frame advances exactly 1/60 s (screenshots on slow GPUs). */
   virtualTime: boolean;
+  /** Benchmark: step through particle levels and record frame times (docs/perf.md). */
+  bench: boolean;
   fast: boolean;
   dev: boolean;
   stageMs: number;
@@ -46,6 +48,7 @@ export function readRuntime(search: string): Runtime {
     quality: quality !== null ? Math.max(0, Math.min(5, Number(quality))) : null,
     particles: q.get('particles') !== null ? Math.max(0, Number(q.get('particles'))) : null,
     virtualTime: q.get('vt') === '1',
+    bench: q.get('bench') === '1',
     fast,
     dev: q.get('dev') === '1' || fast,
     stageMs: fast ? 24_000 : STAGE.durationMs,

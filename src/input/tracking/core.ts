@@ -71,7 +71,22 @@ export class TrackerCore {
     const segBuf = cfg.segmentation ? await fetchWithProgress(`${base}models/selfie_segmenter.tflite`, 'segmenter', this.post) : null;
 
     const fileset = await FilesetResolver.forVisionTasks(`${base}wasm`, useModule);
+    // In a module worker the WASM loader is an ES module: MediaPipe clears
+    // self.ModuleFactory after creating a task, and a second import() of the
+    // same URL is served from the module cache without re-running, so the
+    // second task would fail with "ModuleFactory not set". Keep the factory
+    // and restore it before each task (docs/decisions.md D3).
+    const g = globalThis as unknown as { ModuleFactory?: unknown };
+    let factory: unknown = null;
+    if (useModule) {
+      const mod = (await import(/* @vite-ignore */ fileset.wasmLoaderPath)) as { default?: unknown };
+      factory = mod.default ?? g.ModuleFactory ?? null;
+    }
+    const restoreFactory = () => {
+      if (factory) g.ModuleFactory = factory;
+    };
     this.post({ type: 'progress', stage: 'init', loaded: 0, total: 1 });
+    restoreFactory();
     this.pose = await PoseLandmarker.createFromOptions(fileset, {
       baseOptions: { modelAssetBuffer: poseBuf, delegate: cfg.delegate },
       runningMode: 'VIDEO',
@@ -83,6 +98,7 @@ export class TrackerCore {
       ...(cfg.delegate === 'GPU' ? { canvas: makeCanvas(1, 1) } : {}),
     });
     if (segBuf) {
+      restoreFactory();
       this.seg = await ImageSegmenter.createFromOptions(fileset, {
         baseOptions: { modelAssetBuffer: segBuf, delegate: cfg.delegate },
         runningMode: 'VIDEO',

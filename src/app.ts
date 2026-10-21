@@ -96,6 +96,7 @@ export class App {
   private maxParticles = 0;
   private emergency = false;
   private vt = 0;
+  private bench: { level: number; t0: number; samples: number[]; results: Array<Record<string, number | string>> } | null = null;
   /** App clock: real time, or virtual time (?vt=1) advancing 1/60 s per frame. */
   private clock = (): number => (this.rt.virtualTime ? this.vt : performance.now());
 
@@ -433,7 +434,8 @@ export class App {
       this.fpsT = now;
     }
     this.debug.pushFrame(dtMs);
-    if (this.phase !== 'loading' && !this.rt.virtualTime && this.quality.sample(now, dtMs)) {
+    if (this.rt.bench) this.runBench(now, dtMs);
+    else if (this.phase !== 'loading' && !this.rt.virtualTime && this.quality.sample(now, dtMs)) {
       this.world.particles?.setCount(this.rt.particles ?? this.quality.particles);
       this.gfx.setResolutionScale(this.quality.resolutionScale);
       this.gfx.setEffects(this.quality.state.effects && this.rt.flags.fx);
@@ -555,6 +557,52 @@ export class App {
     if (now - this.lastWatchdogAt > 1000) {
       this.lastWatchdogAt = now;
       this.runWatchdog(now);
+    }
+  }
+
+  /**
+   * Benchmark (?bench=1): 6 s per particle level (first 1 s discarded), with
+   * whatever tracking the source runs. Results go to the console and are
+   * downloadable as JSON (used to fill docs/perf.md on the exhibition PC).
+   */
+  private runBench(now: number, dtMs: number): void {
+    if (this.phase === 'loading' || !this.world.particles) return;
+    const levels = RENDER.particleLevels.slice(0, this.quality.maxParticleLevel + 1);
+    if (!this.bench) {
+      this.bench = { level: 0, t0: now, samples: [], results: [] };
+      this.world.particles.setCount(levels[0]!);
+    }
+    const b = this.bench;
+    if (b.level >= levels.length) return;
+    if (now - b.t0 > 1000) b.samples.push(dtMs);
+    if (now - b.t0 > 6000) {
+      const xs = [...b.samples].sort((x, y) => x - y);
+      const avg = xs.reduce((a, x) => a + x, 0) / Math.max(1, xs.length);
+      const cam = this.source instanceof CameraSource ? this.source : null;
+      b.results.push({
+        particles: levels[b.level]!,
+        backend: this.gfx.backend,
+        tracking: cam?.status().backend ?? this.source?.kind ?? 'none',
+        trackFps: cam ? Number(cam.stats.fps.toFixed(1)) : 0,
+        inferMs: cam ? Number(cam.stats.inferMs.toFixed(2)) : 0,
+        segMs: cam ? Number(cam.stats.segMs.toFixed(2)) : 0,
+        frameAvgMs: Number(avg.toFixed(2)),
+        frameP95Ms: Number((xs[Math.floor(xs.length * 0.95)] ?? 0).toFixed(2)),
+        fps: Number((1000 / avg).toFixed(1)),
+      });
+      console.table(b.results);
+      b.level++;
+      b.samples = [];
+      b.t0 = now;
+      if (b.level < levels.length) this.world.particles.setCount(levels[b.level]!);
+      else {
+        (window as unknown as { __benchResults: unknown }).__benchResults = b.results;
+        const blob = new Blob([JSON.stringify({ ua: navigator.userAgent, results: b.results }, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `aura-bench-${Date.now()}.json`;
+        a.click();
+      }
     }
   }
 
@@ -814,7 +862,17 @@ export class App {
       glyphs: this.world?.glyphs.used ?? 0,
       errors: this.watchdog.errorsLastMinute,
       rendererInfo: this.gfx ? { ...this.gfx.renderer.info.memory } : null,
+      trackingAttempts: this.source instanceof CameraSource ? this.source.attempts : null,
     };
+  }
+
+  /** Test hook (dev/fast only): drive the synthetic visitor. */
+  test(cmd: 'leave' | 'return'): void {
+    if (!this.rt.dev || !(this.source instanceof SynthSource)) return;
+    const bot = this.source;
+    bot.absolute = true;
+    if (cmd === 'leave') bot.script = () => null;
+    else bot.script = scripts.idle();
   }
 
   /** Test hook: seeded RNG for anything non-game that wants determinism. */

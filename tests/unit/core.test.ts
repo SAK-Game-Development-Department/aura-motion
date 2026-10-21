@@ -12,7 +12,10 @@ describe('Rng', () => {
     const sa = Array.from({ length: 50 }, () => a.next());
     expect(Array.from({ length: 50 }, () => b.next())).toEqual(sa);
     expect(Array.from({ length: 50 }, () => c.next())).not.toEqual(sa);
-    for (const x of sa) expect(x).toBeGreaterThanOrEqual(0), expect(x).toBeLessThan(1);
+    for (const x of sa) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThan(1);
+    }
   });
   it('fork streams are independent but deterministic', () => {
     expect(new Rng(1).fork(5).next()).toBe(new Rng(1).fork(5).next());

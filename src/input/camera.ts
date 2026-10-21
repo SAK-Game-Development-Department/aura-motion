@@ -142,8 +142,9 @@ export class CameraSource implements InputSource {
     if (host.busy) {
       // Keep latency low: drop frames rather than queueing them.
       this.stats.dropped++;
-      // Recover from a lost result (e.g. worker error) after 1s.
-      if (now - this.lastSubmitAt < 1000) return;
+      // Recover from a lost result after 3 s (the worker keeps only the newest
+      // frame, so a resubmit can never build a queue).
+      if (now - this.lastSubmitAt < 3000) return;
     }
     const t = meta.captureTime ?? now;
     try {

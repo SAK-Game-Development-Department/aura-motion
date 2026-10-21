@@ -2,7 +2,7 @@ import { defineConfig, type Plugin } from 'vite';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { SECURITY_HEADERS } from './src/config/headers';
+import { SECURITY_HEADERS } from './src/config/headers.ts';
 
 /**
  * Emits dist/sw.js with a precache manifest of every built asset (including the
@@ -59,7 +59,7 @@ export default defineConfig({
   base: './',
   build: {
     target: 'es2023',
-    sourcemap: true,
+    sourcemap: false,
     chunkSizeWarningLimit: 2000,
   },
   worker: {
