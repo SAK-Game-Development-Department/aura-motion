@@ -13,6 +13,8 @@ import { Ring, clamp } from './core/math';
 import type { FieldFrame, PoseFrame, Vec2 } from './core/types';
 import { DebugOverlay, type DebugStats } from './debug/overlay';
 import { HighScores } from './exhibit/highscores';
+import { cardUrl, qrAvailable } from './exhibit/card';
+import qrcode from 'qrcode-generator';
 import { HoldButtons } from './exhibit/holdButton';
 import { nickname } from './exhibit/nickname';
 import { PresenceTracker, judgePlacement, type Placement } from './exhibit/presence';
@@ -390,10 +392,22 @@ export class App {
       ranking: this.scores.list(),
       flow: sc.flowCaptured,
       isBest: sc.score > todayBest && sc.score > 0,
+      qrSvg: this.rt.flags.qr && qrAvailable(location) ? this.cardQr({ score: sc.score, rank: entry.rank, combo: sc.maxCombo, name: nick, date: new Date().toISOString().slice(0, 10) }) : null,
     });
     this.setPhase('results');
     this.requireNewVisitor = true;
     this.botScript();
+  }
+
+  private cardQr(d: Parameters<typeof cardUrl>[1]): string | null {
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(cardUrl(document.baseURI, d));
+      qr.make();
+      return qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+    } catch {
+      return null;
+    }
   }
 
   private softReset(reason: string): void {
@@ -482,7 +496,7 @@ export class App {
         const pi = judgePlacement(b, { forceSeated: this.forceSeated, preferStanding: !this.forceSeated && this.presence.presentFor(now) < this.rt.preferStandingMs });
         this.placement = this.requireNewVisitor ? 'none' : pi.placement;
         const progress = this.presence.startProgress(now);
-        this.hud.setTitle({ attract, placement: attract ? 'none' : this.placement, progress, seated: pi.seated });
+        this.hud.setTitle({ attract, placement: attract ? 'none' : this.placement, progress, seated: pi.seated, waitingNext: this.requireNewVisitor && !!b?.present });
         this.updateButtons(now, attract ? [] : [{ id: 'seat', label: this.forceSeated ? 'たって<br>あそぶ' : 'すわって<br>あそぶ' }], 'title');
         if (!attract && this.presence.ready(now) && !this.requireNewVisitor) this.startCalibration(now);
         break;

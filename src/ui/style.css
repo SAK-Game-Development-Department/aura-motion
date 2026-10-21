@@ -100,3 +100,7 @@ body.cursor { cursor: crosshair; }
 .err p { font-size: 2.6vh; color: var(--dim); line-height: 1.7; margin: .5em 0; }
 .err code { color: var(--white); }
 .staffnote { position: absolute; left: 1.5vw; bottom: 1.2vh; font-size: 1.6vh; color: rgba(244,247,255,.35); }
+
+/* Result card QR (Tier 2) */
+.qr { position: absolute; left: 4vw; top: 50%; transform: translateY(-50%); text-align: center; font-size: 2vh; color: var(--dim); line-height: 1.5; }
+.qr svg { width: 22vh; height: 22vh; display: block; margin: 0 auto 1.2vh; background: #f4f7ff; border-radius: 1vh; padding: 1vh; box-shadow: 0 0 2vh rgba(63,242,255,.35); }

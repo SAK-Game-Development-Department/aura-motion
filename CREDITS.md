@@ -17,6 +17,7 @@ AURA のコード、ゲーム名、用語、ビジュアルはすべてオリジ
 |---|---|
 | three.js (r186) | MIT |
 | @mediapipe/tasks-vision | Apache-2.0 |
+| qrcode-generator 2.0.4（Kazuhiko Arase） | MIT（結果カードの QR、Tier 2。「QRコード」はデンソーウェーブの登録商標） |
 
 ## 開発ツール（配信物には含まれないもの）
 Vite (MIT), TypeScript (Apache-2.0), Vitest (MIT), Playwright (Apache-2.0), ESLint (MIT), typescript-eslint (MIT), fflate (MIT)

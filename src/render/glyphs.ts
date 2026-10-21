@@ -88,8 +88,17 @@ export class GlyphBatch {
     this.s.set(w, h, 1);
     this.m.compose(this.t, this.q, this.s);
     this.mesh.setMatrixAt(i, this.m);
-    this.color.set([rgb[0], rgb[1], rgb[2], intensity], i * 4);
-    this.param.set([shape, p1, p2, p3], i * 4);
+    const o = i * 4;
+    const c = this.color;
+    const p = this.param;
+    c[o] = rgb[0];
+    c[o + 1] = rgb[1];
+    c[o + 2] = rgb[2];
+    c[o + 3] = intensity;
+    p[o] = shape;
+    p[o + 1] = p1;
+    p[o + 2] = p2;
+    p[o + 3] = p3;
   }
 
   /** Glowing line segment between two world points. */
@@ -121,6 +130,7 @@ export class Sparks {
   private size: Float32Array;
   private rgb: Float32Array;
   private head = 0;
+  private tmp: [number, number, number] = [0, 0, 0];
 
   constructor(readonly capacity = 700) {
     this.x = new Float32Array(capacity);
@@ -169,7 +179,10 @@ export class Sparks {
       if (l <= 0) continue;
       const k = l / this.max[i]!;
       const sz = this.size[i]! * (0.4 + 0.6 * k);
-      g.add(Shape.Disk, this.x[i]!, this.y[i]!, sz, sz, 0, [this.rgb[i * 3]!, this.rgb[i * 3 + 1]!, this.rgb[i * 3 + 2]!], k * k * 1.6);
+      this.tmp[0] = this.rgb[i * 3]!;
+      this.tmp[1] = this.rgb[i * 3 + 1]!;
+      this.tmp[2] = this.rgb[i * 3 + 2]!;
+      g.add(Shape.Disk, this.x[i]!, this.y[i]!, sz, sz, 0, this.tmp, k * k * 1.6);
     }
   }
 

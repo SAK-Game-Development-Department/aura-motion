@@ -42,6 +42,7 @@ export class Hud {
   private calibDots: HTMLElement;
   private resEl: HTMLElement;
   private rankingEl: HTMLElement;
+  private qrEl: HTMLElement;
   private errEl: HTMLElement;
   private buttons = new Map<string, HTMLElement>();
   private judgePool: HTMLElement[] = [];
@@ -124,7 +125,8 @@ export class Hud {
     // Results
     this.resEl = h('div', 'res');
     this.rankingEl = h('div', 'ranking');
-    this.layers.results.append(this.resEl, this.rankingEl);
+    this.qrEl = h('div', 'qr');
+    this.layers.results.append(this.resEl, this.rankingEl, this.qrEl);
 
     // Error
     this.errEl = h('div', 'err');
@@ -149,8 +151,14 @@ export class Hud {
   }
 
   // ── title ──
-  setTitle(opts: { attract: boolean; placement: Placement; progress: number; seated: boolean; guideScreen?: { x: number; y: number; h: number } }): void {
+  setTitle(opts: { attract: boolean; placement: Placement; progress: number; seated: boolean; waitingNext?: boolean }): void {
     const { attract, placement, progress } = opts;
+    if (opts.waitingNext) {
+      this.guide.style.opacity = '0';
+      this.callEl.textContent = 'ありがとう！ つぎの ひと どうぞ';
+      this.hintEl.textContent = '';
+      return;
+    }
     this.guide.style.opacity = attract ? '0' : '1';
     this.guide.classList.toggle('tooClose', placement === 'tooClose');
     this.guide.classList.toggle('tooFar', placement === 'tooFar');
@@ -260,7 +268,7 @@ export class Hud {
   }
 
   // ── results ──
-  setResults(r: { score: number; rank: string; maxCombo: number; counts: Record<Grade, number>; nick: string; placed: number; ranking: ScoreEntry[]; flow: number; isBest: boolean }): void {
+  setResults(r: { score: number; rank: string; maxCombo: number; counts: Record<Grade, number>; nick: string; placed: number; ranking: ScoreEntry[]; flow: number; isBest: boolean; qrSvg?: string | null }): void {
     const rankClass = r.rank === 'S' ? 'glow-a' : r.rank === 'A' ? 'glow-c' : 'glow-m';
     this.resEl.innerHTML = `
       <div class="rank ${rankClass}">${r.rank}</div>
@@ -268,6 +276,7 @@ export class Hud {
       <div class="row"><span>PERFECT <b>${r.counts.perfect}</b></span><span>GOOD <b>${r.counts.good}</b></span><span>MISS <b>${r.counts.miss}</b></span><span>MAX <b>${r.maxCombo}</b></span></div>
       <div class="nick">${r.nick}</div>
       ${r.isBest ? '<div class="newbest">きょうの ベスト！</div>' : ''}`;
+    this.qrEl.innerHTML = r.qrSvg ? `${r.qrSvg}<div>スマホで よみとると<br>カードを もちかえれる</div>` : '';
     this.rankingEl.innerHTML = `<h3>RANKING</h3><ol>${r.ranking
       .slice(0, 7)
       .map((e, i) => `<li class="${i === r.placed ? 'me' : ''}"><span>${i + 1}. ${escapeHtml(e.name)}</span><span>${e.score.toLocaleString('ja-JP')}</span></li>`)

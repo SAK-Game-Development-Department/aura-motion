@@ -42,6 +42,8 @@ function serviceWorkerPlugin(): Plugin {
         ...Object.entries(SECURITY_HEADERS).map(([k, v]) => `  ${k}: ${v}`),
         '/sw.js',
         '  Cache-Control: no-cache',
+        '/card.html',
+        '  Cache-Control: no-cache',
         '/index.html',
         '  Cache-Control: no-cache',
         '/assets/*',
@@ -59,6 +61,9 @@ export default defineConfig({
   base: './',
   build: {
     target: 'es2023',
+    rollupOptions: {
+      input: { main: 'index.html', card: 'card.html' },
+    },
     sourcemap: false,
     chunkSizeWarningLimit: 2000,
   },
