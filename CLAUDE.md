@@ -16,8 +16,14 @@
 | 展示用ZIP | `npm run zip` → `release/aura-YYYY-MM-DD.zip` |
 | すべてのゲート | `npm run check:all` |
 
-URLパラメータ（開発・スタッフ用）: `?source=camera|synth|autoplay|mouse|replay&replay=fixtures/x.json`、
-`?flags=-particles,+qr`、`?seed=123`、`?debug=1`、`?calm=1`、`?webgl=1`（WebGL2を強制）、`?quality=0..5`、`?fast=1`（時間短縮。テスト用）
+URLパラメータ（開発・スタッフ用）: `?source=camera|synth|autoplay|mouse|replay|empty&replay=fixtures/x.json`、
+`?flags=-particles,+qr`、`?seed=123`、`?debug=1`、`?calm=1`、`?webgl=1`（WebGL2を強制）、`?quality=0..5`、`?fast=1`（時間短縮。テスト用）、
+`?vt=1`（仮想時間: 1フレームごとに1/60秒進む。遅い GPU でもスクリーンショットの見た目が正しくなる）、`?particles=N`（粒子数を固定）、`?bench=1`（性能測定。docs/perf.md）、`?dev=1`（P キーでランドマークを JSON に記録）
+
+ページ: `index.html`（ゲーム）、`audience.html`（観客向けの画面。ゲームから A キーで開く）、`card.html`（持ち帰り用の結果カード。QR のリンク先）
+
+ヘッドレスで描画を確認する: Chromium の起動オプション `--enable-unsafe-webgpu --use-angle=swiftshader --enable-features=Vulkan --use-vulkan=swiftshader`（playwright.config.ts の `GPU_ARGS`）。
+SwiftShader は粒子 3 万個で 1fps 以下になるので、E2E は `flags=-particles` で動かし、粒子の見た目は `?vt=1&particles=12000` で確認する
 
 ## アーキテクチャ（要点）
 - `src/config/` — **数値はすべてここに置く**（判定幅、ステージ、品質、安全、展示の挙動、機能フラグ）。マジックナンバーをほかの場所に書かない

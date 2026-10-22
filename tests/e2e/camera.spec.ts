@@ -31,7 +31,8 @@ test('camera denied → error screen → mouse emergency mode', async ({ browser
   await waitFor(page, (s) => s.phase === 'error', 60_000);
   await expect(page.locator('.err h2')).toContainText('カメラ');
   await page.screenshot({ path: 'test-results/camera-error.png' });
-  const s = await waitFor(page, (x) => x.source === 'mouse' && x.phase === 'title', 20_000);
-  expect(s.present).toBe(true);
+  // Mouse mode synthesises a visitor → the title sees someone present.
+  const s = await waitFor(page, (x) => x.source === 'mouse' && x.phase !== 'error' && x.present, 20_000);
+  expect(['title', 'calibrate']).toContain(s.phase);
   await ctx.close();
 });

@@ -13,6 +13,7 @@ import { Ring, clamp } from './core/math';
 import type { FieldFrame, PoseFrame, Vec2 } from './core/types';
 import { DebugOverlay, type DebugStats } from './debug/overlay';
 import { HighScores } from './exhibit/highscores';
+import { Broadcaster } from './exhibit/broadcast';
 import { cardUrl, qrAvailable } from './exhibit/card';
 import qrcode from 'qrcode-generator';
 import { HoldButtons } from './exhibit/holdButton';
@@ -98,6 +99,8 @@ export class App {
   private maxParticles = 0;
   private emergency = false;
   private vt = 0;
+  private audience = new Broadcaster();
+  private lastJudge: { grade: string; at: number } | null = null;
   private bench: { level: number; t0: number; samples: number[]; results: Array<Record<string, number | string>> } | null = null;
   /** App clock: real time, or virtual time (?vt=1) advancing 1/60 s per frame. */
   private clock = (): number => (this.rt.virtualTime ? this.vt : performance.now());
@@ -284,6 +287,9 @@ export class App {
       else this.softReset('staff');
     } else if (k === 's' && !e.repeat && this.phase === 'title') {
       this.forceSeated = !this.forceSeated;
+    } else if (k === 'a' && !e.repeat && this.source?.kind !== 'mouse') {
+      // Audience window for a second monitor (same browser; BroadcastChannel).
+      window.open('./audience.html', 'aura-audience', 'popup');
     } else if (k === 'p' && this.rt.dev && !e.repeat) {
       this.toggleRecording();
     }
@@ -571,6 +577,7 @@ export class App {
       this.breakdown['track.fld'] = st.fieldMs;
     }
     if (this.debug.shown) this.debug.update(now, this.debugStats());
+    this.broadcast(now);
     if (now - this.lastWatchdogAt > 1000) {
       this.lastWatchdogAt = now;
       this.runWatchdog(now);
@@ -623,10 +630,36 @@ export class App {
     }
   }
 
+  private broadcast(now: number): void {
+    const s = this.session;
+    const b = this.body?.present ? this.body : null;
+    const cam = this.source instanceof CameraSource ? this.source : null;
+    this.audience.send(now, {
+      phase: this.phase,
+      score: s?.score.score ?? 0,
+      combo: s?.score.combo ?? 0,
+      section: s?.section ?? null,
+      progress: s ? (now - this.playStart) / s.stage.durationMs : 0,
+      present: !!b,
+      lastJudge: this.lastJudge,
+      ranking: this.scores.today(),
+      stats: {
+        fps: this.fps,
+        latencyMs: this.lat.pipeline + this.lat.display,
+        particles: this.world.particles?.count ?? 0,
+        backend: this.gfx.backend,
+        tracking: cam?.status().backend ?? this.source?.kind ?? 'none',
+        trackFps: cam?.stats.fps ?? 30,
+      },
+      skeleton: b ? b.lm.flatMap((p) => (p.v > 0.35 ? [p.x, p.y] : [-1, -1])) : null,
+    });
+  }
+
   private handlePlayEvents(events: GameEvent[]): void {
     const L = this.gfx.layout;
     for (const e of events) {
       if (e.type === 'judge') {
+        this.lastJudge = { grade: e.grade, at: Date.now() };
         const p = L.viewToScreen(e.view);
         this.hud.judge(e.grade, p.x, p.y - L.h * 0.06);
       } else if (e.type === 'section') {

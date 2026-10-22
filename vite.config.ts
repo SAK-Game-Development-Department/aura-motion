@@ -62,7 +62,7 @@ export default defineConfig({
   build: {
     target: 'es2023',
     rollupOptions: {
-      input: { main: 'index.html', card: 'card.html' },
+      input: { main: 'index.html', card: 'card.html', audience: 'audience.html' },
     },
     sourcemap: false,
     chunkSizeWarningLimit: 2000,

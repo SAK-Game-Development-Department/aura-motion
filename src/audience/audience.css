@@ -1,0 +1,24 @@
+:root { --cyan: #3ff2ff; --magenta: #ff3fb4; --amber: #ffb43f; --white: #f4f7ff; --dim: rgba(244,247,255,.55); }
+html, body { margin: 0; height: 100%; background: radial-gradient(ellipse at 40% 30%, #121a3a 0%, #05060f 55%, #020208 100%); color: var(--white); font-family: 'BIZ UDPGothic', 'Hiragino Maru Gothic ProN', system-ui, sans-serif; overflow: hidden; }
+.grid { display: grid; grid-template-columns: 1.3fr 1fr; grid-template-rows: auto 1fr; height: 100vh; gap: 3vh 4vw; padding: 4vh 4vw; box-sizing: border-box; }
+.logo { grid-column: 1 / 3; font-size: 7vh; letter-spacing: .35em; font-weight: 300; text-shadow: 0 0 .2em var(--cyan), 0 0 .8em rgba(255,63,180,.35); }
+.live { display: flex; flex-direction: column; gap: 2vh; }
+#section { font-size: 4vh; color: var(--amber); letter-spacing: .2em; min-height: 5vh; }
+#score { font-size: 16vh; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 0 .2em rgba(63,242,255,.8); min-height: 16vh; }
+#combo { font-size: 5vh; color: var(--amber); min-height: 6vh; }
+.barw { height: 1vh; background: rgba(244,247,255,.08); border-radius: 1vh; overflow: hidden; }
+#bar { height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan), var(--amber)); transition: width .3s; }
+#mini { width: 100%; flex: 1; min-height: 20vh; }
+.side { display: flex; flex-direction: column; gap: 3vh; }
+h2 { margin: 0 0 1vh; font-weight: 400; font-size: 2.6vh; letter-spacing: .3em; color: var(--dim); }
+#rank { list-style: none; margin: 0; padding: 0; font-size: 3vh; }
+#rank li { display: flex; justify-content: space-between; padding: .4em 0; border-bottom: 1px solid rgba(244,247,255,.08); }
+#rank li:first-child { color: var(--amber); }
+.how { font-size: 2.3vh; line-height: 1.7; color: var(--dim); }
+.how ol { margin: 0; padding-left: 1.4em; }
+.how b { color: var(--white); }
+.nums { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1vh; margin-top: 1.5vh; text-align: center; }
+.nums div { border: 1px solid rgba(63,242,255,.25); border-radius: 1vh; padding: 1vh .5vh; font-size: 1.8vh; color: var(--dim); }
+.nums b { display: block; font-size: 2.8vh; color: var(--cyan); font-variant-numeric: tabular-nums; }
+#status { position: fixed; left: 50%; bottom: 2vh; transform: translateX(-50%); color: var(--amber); font-size: 2vh; }
+.privacy { position: fixed; right: 4vw; bottom: 2vh; font-size: 1.8vh; color: var(--dim); }

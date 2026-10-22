@@ -11,7 +11,7 @@ test('full loop: a visitor plays through and the booth resets', async ({ page })
   const s0 = await waitFor(page, (s) => s.phase === 'title', 60_000, seen);
   expect(['webgpu', 'webgl2']).toContain(s0.backend);
   await waitFor(page, (s) => s.phase === 'calibrate', 30_000, seen);
-  const play = await waitFor(page, (s) => s.phase === 'play', 30_000, seen);
+  const play = await waitFor(page, (s) => s.phase === 'play' && s.section !== null, 30_000, seen);
   expect(play.section).toBe('intro');
   const sections = new Set<string>();
   const res = await waitFor(

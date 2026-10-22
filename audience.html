@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>AURA — audience</title>
+  </head>
+  <body>
+    <div class="grid">
+      <div class="logo">AURA</div>
+      <section class="live">
+        <div id="section"></div>
+        <div id="score"></div>
+        <div id="combo"></div>
+        <div class="barw"><div id="bar"></div></div>
+        <canvas id="mini" aria-label="player skeleton"></canvas>
+      </section>
+      <section class="side">
+        <div><h2>きょうの ランキング</h2><ol id="rank"></ol></div>
+        <div class="how">
+          <h2>どうやって うごいてるの？</h2>
+          <ol>
+            <li>カメラの映像から、AI が <b>体の33か所の関節</b> と <b>体の輪郭</b> を毎秒30回 見つけます（このパソコンの中だけで計算）</li>
+            <li>輪郭から「体までの距離」と「体の動く速さ」の地図を作り、<b>数十万個の光の粒</b> を GPU で1粒ずつ動かします</li>
+            <li>カメラ→画面の遅れを測って、手の動きを <b>先読み</b> して表示しています。最初の拍手は、その遅れを測るためのものです</li>
+          </ol>
+          <div class="nums">
+            <div>遅れ<b id="n-lat">-</b></div>
+            <div>光の粒<b id="n-par">-</b></div>
+            <div>描画<b id="n-fps">-</b></div>
+            <div>認識<b id="n-trk">-</b></div>
+            <div>GPU<b id="n-be">-</b></div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div id="status"></div>
+    <div class="privacy">映像は保存・送信していません</div>
+    <script type="module" src="/src/audience/audience.ts"></script>
+  </body>
+</html>
