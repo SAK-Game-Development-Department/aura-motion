@@ -20,7 +20,7 @@
 | ビルド / デプロイ | `npm run build`（Pages の制限チェック付き）／`npm run deploy`（→ https://aura-motion.pages.dev） |
 | 展示用ZIP | `npm run zip` |
 
-URLパラメータ（開発・スタッフ用）: `?source=camera|synth|autoplay|mouse|replay|empty`、`?flags=-sigils,+qr`、`?onehand=1`、`?debug=1`、`?calm=1`、`?webgl=1`、
+URLパラメータ（開発・スタッフ用）: `?source=camera|synth|autoplay|mouse|replay|empty`、`?flags=-sigils,+qr`、`?onehand=1`、`?stage=easy|normal|hard`（難易度の固定。選択画面を飛ばす）、`?debug=1`、`?calm=1`、`?webgl=1`、
 `?quality=0..5`、`?particles=N`、`?vt=1`（仮想時間。遅い GPU でスクショを撮るとき）、`?bench=1`、`?fast=1`（時間短縮。テスト用）
 
 ヘッドレスで描画を確認するときの Chromium の起動オプション: `--enable-unsafe-webgpu --use-angle=swiftshader --enable-features=Vulkan --use-vulkan=swiftshader`。
@@ -34,10 +34,10 @@ SwiftShader は粒子が多いと 1fps 以下になるので、E2E は `flags=-p
 - `src/input/` — `InputSource`（camera / replay / synth / mouse）→ `PoseFrame.hands`。`tracking/` は Hand Landmarker を Worker で動かす（D3）
 - `src/render/` — Three.js WebGPURenderer + TSL（手の粒子、光の骨格、指先の軌跡、技の演出）。`src/ui/` HUD、`src/exhibit/` 展示機能、`src/debug/` Dキーのオーバーレイ
 - `tools/gesture-lab/` — ジェスチャーラボ（ライブ認識・ランドマークだけの記録・混同行列・閾値調整）。**展示ビルドには含めない**（別の Vite 設定 `vite.lab.config.ts`）
-- `src/battle/` — 戦闘（決定的）: `techniques.ts`（術の一覧と条件）、`stage.ts`（シードから敵の生成と人の手の限界での検証）、`session.ts`（判定・スコア）、`bot.ts`（自動プレイ）
+- `src/battle/` — 戦闘（決定的）: `stages.ts`（初級・中級・上級のステージ。名前・敵の姿・主・背景。難易度の数値は `config/game.ts` の `STAGE_TUNE`）、`techniques.ts`（術の一覧と条件）、`stage.ts`（シードから敵の生成と人の手の限界での検証）、`session.ts`（判定・スコア）、`bot.ts`（自動プレイ）
 - `src/render/battleView.ts` / `enemies.ts` — 影の敵、弱点の印、術ごとの演出、出現の裂け目・撃破の破片、奥義の結界、隠しボス。`src/ui/hud.ts` のカットイン、`src/ui/techLens.ts`（T キー。技術の可視化）
 - `src/render/background.ts` — ステージごとの背景（湖・星・結晶・月蝕・嵐。テーマごとに別メッシュ）
-- `src/app.ts` — 全体の状態遷移（Loading → Title(アトラクト) → Calibrate → Play(戦闘90秒) → Results → Title。`?practice=1` で練習モード）
+- `src/app.ts` — 全体の状態遷移（Loading → Title(アトラクト) → Select(難易度。手をカードにかざす) → Calibrate → Play(戦闘90秒) → Results → Title。`?practice=1` で練習モード）
 
 ## 規約
 - 数値はすべて `src/config/` に置く（ジェスチャーの閾値は `gesture.ts`、判定は `game.ts`、手の配置は `hand.ts`）
