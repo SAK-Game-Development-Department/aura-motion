@@ -32,8 +32,6 @@ export class CameraSource implements InputSource {
   private lastSubmitAt = 0;
   /** Skip segmentation every other frame when true (quality governor). */
   segmentHalfRate = false;
-  /** Locked player hint for the tracker's velocity splats. */
-  lockHint: { x: number; y: number } | null = null;
   readonly stats = { inferMs: 0, segMs: 0, fieldMs: 0, pipelineMs: 0, fps: 0, dropped: 0 };
   private fpsCount = 0;
   private fpsT0 = 0;
@@ -85,13 +83,12 @@ export class CameraSource implements InputSource {
       const { host, attempts } = await createTrackerHost(
         {
           baseUrl: new URL('./', document.baseURI).href,
-          poseModel: TRACKING.poseModel,
-          numPoses: TRACKING.numPoses,
+          numHands: TRACKING.numHands,
           segmentation: this.opts.segmentation,
           fieldW: TRACKING.fieldW,
           fieldH: TRACKING.fieldH,
-          minPoseDetectionConfidence: TRACKING.minPoseDetectionConfidence,
-          minPosePresenceConfidence: TRACKING.minPosePresenceConfidence,
+          minHandDetectionConfidence: TRACKING.minHandDetectionConfidence,
+          minHandPresenceConfidence: TRACKING.minHandPresenceConfidence,
           minTrackingConfidence: TRACKING.minTrackingConfidence,
         },
         { preferWorker: this.opts.preferWorker, timeoutMs: TRACKING.workerInitTimeoutMs, onProgress: this.opts.onProgress },
@@ -120,7 +117,7 @@ export class CameraSource implements InputSource {
         }
         const vw = this.video?.videoWidth || 16;
         const vh = this.video?.videoHeight || 9;
-        this.frames.emit({ t: r.t, poses: r.poses, aspect: vw / vh, luma: r.luma, timing: { inferStart: r.t, inferEnd: now } });
+        this.frames.emit({ t: r.t, poses: [], hands: r.hands, aspect: vw / vh, luma: r.luma, timing: { inferStart: r.t, inferEnd: now } });
         if (r.field) this.fields.emit({ t: r.t, w: r.fieldW, h: r.fieldH, data: r.field });
       }),
     );
@@ -157,7 +154,6 @@ export class CameraSource implements InputSource {
         t,
         bitmap,
         segment: !this.segmentHalfRate || this.frameId % 2 === 0,
-        lockHint: this.lockHint,
       });
     } catch {
       /* video not ready yet */

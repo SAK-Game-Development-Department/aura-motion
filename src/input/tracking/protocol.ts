@@ -3,16 +3,15 @@ import type { Landmark } from '../../core/types';
 
 export interface TrackerInit {
   type: 'init';
+  numHands: number;
   /** Absolute base URL of the app (worker needs absolute URLs). */
   baseUrl: string;
-  poseModel: 'lite' | 'full';
-  numPoses: number;
   segmentation: boolean;
   delegate: 'GPU' | 'CPU';
   fieldW: number;
   fieldH: number;
-  minPoseDetectionConfidence: number;
-  minPosePresenceConfidence: number;
+  minHandDetectionConfidence: number;
+  minHandPresenceConfidence: number;
   minTrackingConfidence: number;
 }
 
@@ -24,8 +23,6 @@ export interface TrackerFrame {
   bitmap: ImageBitmap;
   /** Run segmentation this frame (quality governor may skip). */
   segment: boolean;
-  /** Index of the locked player's pose among results (-1 = unknown) for velocity splats. */
-  lockHint: { x: number; y: number } | null;
 }
 
 export type TrackerIn = TrackerInit | TrackerFrame | { type: 'reset' } | { type: 'dispose' };
@@ -38,7 +35,7 @@ export interface TrackerResult {
   inferMs: number;
   segMs: number;
   fieldMs: number;
-  poses: Landmark[][];
+  hands: Array<{ lm: Landmark[]; score: number }>;
   luma: number;
   field: Uint8Array | null;
   fieldW: number;

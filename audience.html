@@ -14,16 +14,16 @@
         <div id="score"></div>
         <div id="combo"></div>
         <div class="barw"><div id="bar"></div></div>
-        <canvas id="mini" aria-label="player skeleton"></canvas>
+        <canvas id="mini" aria-label="player hands"></canvas>
       </section>
       <section class="side">
         <div><h2>きょうの ランキング</h2><ol id="rank"></ol></div>
         <div class="how">
           <h2>どうやって うごいてるの？</h2>
           <ol>
-            <li>カメラの映像から、AI が <b>体の33か所の関節</b> と <b>体の輪郭</b> を毎秒30回 見つけます（このパソコンの中だけで計算）</li>
-            <li>輪郭から「体までの距離」と「体の動く速さ」の地図を作り、<b>数十万個の光の粒</b> を GPU で1粒ずつ動かします</li>
-            <li>カメラ→画面の遅れを測って、手の動きを <b>先読み</b> して表示しています。最初の拍手は、その遅れを測るためのものです</li>
+            <li>カメラの映像から、AI が <b>手の21か所の関節</b> を毎秒30回 見つけます（このパソコンの中だけで計算）</li>
+            <li>指の曲がる角度・指先どうしの距離から <b>手の形</b> を、指先の軌跡と手の大きさの変化から <b>動き</b> を見分けて、術にします</li>
+            <li>手のまわりに <b>数十万個の光の粒</b> を GPU で動かし、カメラ→画面の遅れを測って指先を <b>先読み</b> して描いています</li>
           </ol>
           <div class="nums">
             <div>遅れ<b id="n-lat">-</b></div>

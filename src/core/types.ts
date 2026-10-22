@@ -15,12 +15,21 @@ export interface Landmark {
   v: number;
 }
 
+/** One detected hand (21 landmarks, view space). */
+export interface HandObs {
+  lm: Landmark[];
+  /** Detector confidence 0..1. */
+  score: number;
+}
+
 /** One tracking result as produced by any InputSource. Must be serialisable. */
 export interface PoseFrame {
   /** Capture time in the source clock (ms). */
   t: number;
   /** All detected people (each 33 landmarks), most-confident first. */
   poses: Landmark[][];
+  /** Detected hands (hand mode). */
+  hands?: HandObs[];
   /** Frame aspect ratio (w / h). */
   aspect: number;
   /** Optional mean frame luma 0..1 (for dark-room detection). */
@@ -70,3 +79,23 @@ export const BONES: ReadonlyArray<readonly [number, number]> = [
 
 export type Hand = 'L' | 'R';
 export type Side = Hand | 'any';
+
+/** Hand landmark indices (MediaPipe Hand Landmarker, 21 points). */
+export const HL = {
+  wrist: 0,
+  thumbCmc: 1, thumbMcp: 2, thumbIp: 3, thumbTip: 4,
+  indexMcp: 5, indexPip: 6, indexDip: 7, indexTip: 8,
+  middleMcp: 9, middlePip: 10, middleDip: 11, middleTip: 12,
+  ringMcp: 13, ringPip: 14, ringDip: 15, ringTip: 16,
+  pinkyMcp: 17, pinkyPip: 18, pinkyDip: 19, pinkyTip: 20,
+} as const;
+
+export const HAND_LANDMARKS = 21;
+
+export const HAND_BONES: ReadonlyArray<readonly [number, number]> = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16],
+  [13, 17], [0, 17], [17, 18], [18, 19], [19, 20],
+];

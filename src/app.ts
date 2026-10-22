@@ -1,53 +1,39 @@
-// App: exhibition state machine and frame loop.
+// App: exhibition state machine and frame loop (hand / gesture edition).
 //
-//   loading → title (attract demo when empty / positioning guide) → calibrate
-//   → play (90 s) → results → title …
+//   loading → title (ghost-hand attract when empty / hand placement guide)
+//   → calibrate (open & fist → personal thresholds; fist on the beat → latency)
+//   → practice (P1: free play with live recognition)  … → title
 //
-// Everything that can fail at a venue is handled here: camera errors (→ mouse
-// emergency mode), tracking stalls (→ restart), exceptions (→ soft reset),
-// empty booth (→ title after 10 s), and a stalled main loop (→ reload).
-import { EXHIBIT, JUDGE, LATENCY, RENDER, TRACKING } from './config';
+// Handles camera errors (→ mouse emergency mode), tracking stalls (→ restart),
+// exceptions (→ soft reset), empty booth (→ title) and a stalled loop (→ reload).
+import { EXHIBIT, GESTURE, JUDGE, LATENCY, RENDER, TRACKING } from './config';
 import type { Runtime } from './config/runtime';
-import { Rng, hash32 } from './core/rng';
-import { Ring, clamp } from './core/math';
-import type { FieldFrame, PoseFrame, Vec2 } from './core/types';
+import { Ring } from './core/math';
+import type { FieldFrame, PoseFrame } from './core/types';
 import { DebugOverlay, type DebugStats } from './debug/overlay';
-import { HighScores } from './exhibit/highscores';
 import { Broadcaster } from './exhibit/broadcast';
-import { cardUrl, qrAvailable } from './exhibit/card';
-import qrcode from 'qrcode-generator';
-import { HoldButtons } from './exhibit/holdButton';
-import { nickname } from './exhibit/nickname';
+import { HighScores } from './exhibit/highscores';
 import { PresenceTracker, judgePlacement, type Placement } from './exhibit/presence';
 import { Watchdog, canReload } from './exhibit/watchdog';
 import { LatencyCalibrator } from './game/calibration';
-import { multiplier, rankOf } from './game/score';
-import { GameSession, type GameEvent } from './game/session';
-import { BodyTracker, emptySnapshot, type BodySnapshot } from './input/body';
+import { GestureCalibrator } from './gesture/calibrate';
+import { GestureEngine, type GestureEvent, type GestureFrame } from './gesture/engine';
+import { CORE_SHAPES, SHAPE_IDS, SHAPE_LABEL, defaultHand, withShape, relaxedHand, type SynthHand } from './gesture/handModel';
+import { MOTION_LABEL } from './gesture/motion';
+import { HandSynthSource, perform, showcase, type HandScript } from './gesture/performer';
+import { SIGIL_LABEL } from './gesture/sigil';
 import { CameraSource } from './input/camera';
 import { MouseSource } from './input/mouse';
-import { Recorder, ReplaySource, parseRecording } from './input/replay';
+import { ReplaySource, parseRecording } from './input/replay';
 import type { InputSource } from './input/source';
-import { SynthSource, attractScript, autoplayScript, scripts } from './input/synth';
-import { FieldBuilder } from './input/tracking/field';
+import { FieldBuilder, HAND_SPLATS } from './input/tracking/field';
 import { Gfx } from './render/gfx';
 import { QualityGovernor } from './render/quality';
 import { WorldView } from './render/world';
-import { generateValidStage } from './stage/generator';
-import type { Stage } from './stage/types';
 import { Hud } from './ui/hud';
 
-type Phase = 'loading' | 'title' | 'calibrate' | 'play' | 'results' | 'error';
-
-interface Demo {
-  source: SynthSource;
-  tracker: BodyTracker;
-  session: GameSession;
-  stage: Stage;
-  start: number;
-  body: BodySnapshot | null;
-  field: FieldBuilder;
-}
+type Phase = 'loading' | 'title' | 'calibrate' | 'practice' | 'error';
+type CalibStep = 'open' | 'fist' | 'beat';
 
 export class App {
   private gfx!: Gfx;
@@ -56,27 +42,23 @@ export class App {
   private debug!: DebugOverlay;
   private source: InputSource | null = null;
   private sourceOff: Array<() => void> = [];
-  private tracker = new BodyTracker();
+  readonly engine: GestureEngine;
+  private gframe: GestureFrame | null = null;
+  private pendingEvents: GestureEvent[] = [];
   private fieldBuilder = new FieldBuilder(TRACKING.fieldW, TRACKING.fieldH);
-  private body: BodySnapshot | null = null;
   private phase: Phase = 'loading';
   private phaseAt = 0;
   private presence: PresenceTracker;
-  private buttons = new HoldButtons();
-  private session: GameSession | null = null;
-  private stage: Stage | null = null;
-  private calib: LatencyCalibrator | null = null;
+  private calibStep: CalibStep = 'open';
+  private calibStepAt = 0;
+  private shapeCal = new GestureCalibrator();
+  private latCal: LatencyCalibrator | null = null;
   private offsetMs: number = LATENCY.defaultOffsetMs;
   private calibrated = false;
-  private playStart = 0;
-  private sectionIdx = -1;
-  private demo: Demo | null = null;
+  private thresholdsCalibrated = false;
   private quality!: QualityGovernor;
   private watchdog = new Watchdog();
   private scores = new HighScores();
-  private forceSeated = false;
-  private seatedThisRun = false;
-  private requireNewVisitor = false;
   private calm: boolean;
   private lastFrameAt = 0;
   private lastLoopAt = 0;
@@ -85,33 +67,39 @@ export class App {
   private fps = 0;
   private breakdown: Record<string, number> = {};
   private lat = { pipeline: 0, display: 0, pendingReceipt: 0 };
-  private stability = new Ring<{ conf: number; jitter: number; luma: number }>(90);
+  private stability = new Ring<{ score: number; luma: number }>(90);
   private unstable = false;
   private latestLuma = 0.4;
-  private people = 0;
-  private recorder: Recorder | null = null;
-  private seedCounter: number;
   private lastWatchdogAt = 0;
   private swWaiting: ServiceWorker | null = null;
   private placement: Placement = 'none';
-  private resultsInfo: { placed: number } | null = null;
   private lastFieldAt = 0;
-  private maxParticles = 0;
   private emergency = false;
   private vt = 0;
   private audience = new Broadcaster();
-  private lastJudge: { grade: string; at: number } | null = null;
+  private demo: { source: HandSynthSource; engine: GestureEngine; frame: GestureFrame | null; field: FieldBuilder } | null = null;
+  private lastCast: { label: string; at: number } | null = null;
+  private castCount = 0;
   private bench: { level: number; t0: number; samples: number[]; results: Array<Record<string, number | string>> } | null = null;
-  /** App clock: real time, or virtual time (?vt=1) advancing 1/60 s per frame. */
   private clock = (): number => (this.rt.virtualTime ? this.vt : performance.now());
 
   constructor(
     private canvas: HTMLCanvasElement,
     private rt: Runtime,
   ) {
-    this.presence = new PresenceTracker(rt.absentReturnMs);
+    this.presence = new PresenceTracker(rt.absentReturnMs, rt.startHoldMs);
     this.calm = rt.calm;
-    this.seedCounter = rt.seed ?? (Date.now() & 0xffffff);
+    this.engine = new GestureEngine(this.engineOptions(false));
+  }
+
+  private engineOptions(degraded: boolean) {
+    const f = this.rt.flags;
+    return {
+      shapes: degraded || !f.shapes8 ? CORE_SHAPES : SHAPE_IDS,
+      motions: f.motions,
+      sigils: f.sigils,
+      twoHand: f.twoHand && !this.rt.oneHand,
+    };
   }
 
   // ───────────────────────── boot ─────────────────────────
@@ -124,10 +112,9 @@ export class App {
     if (this.rt.debug) this.debug.toggle(true);
 
     this.gfx = await Gfx.create(this.canvas, { forceWebGL: this.rt.forceWebGL });
-    const webgl = this.gfx.backend === 'webgl2';
-    this.quality = new QualityGovernor({ webgl, startLevel: this.rt.quality ?? RENDER.startLevel });
-    this.maxParticles = this.rt.flags.particles ? RENDER.particleLevels[this.quality.maxParticleLevel]! : 0;
-    this.world = new WorldView(this.gfx, this.maxParticles, TRACKING.fieldW, TRACKING.fieldH);
+    this.quality = new QualityGovernor({ webgl: this.gfx.backend === 'webgl2', startLevel: this.rt.quality ?? RENDER.startLevel });
+    const maxParticles = this.rt.flags.particles ? RENDER.particleLevels[this.quality.maxParticleLevel]! : 0;
+    this.world = new WorldView(this.gfx, maxParticles, TRACKING.fieldW, TRACKING.fieldH);
     this.world.fxEnabled = this.rt.flags.fx;
     this.applyCalm();
     this.world.particles?.setCount(this.rt.particles ?? this.quality.particles);
@@ -136,16 +123,12 @@ export class App {
     window.addEventListener('keydown', (e) => this.onKey(e));
     window.addEventListener('error', () => this.watchdog.recordError(this.clock()));
     window.addEventListener('unhandledrejection', () => this.watchdog.recordError(this.clock()));
-    document.addEventListener('visibilitychange', () => {
-      this.lastLoopAt = performance.now();
-    });
+    document.addEventListener('visibilitychange', () => (this.lastLoopAt = performance.now()));
     this.registerServiceWorker();
 
     this.lastLoopAt = performance.now();
     requestAnimationFrame(this.loop);
-    // Main-loop stall detection runs outside rAF.
     setInterval(() => this.checkStall(), 1000);
-
     await this.startSource(this.rt.source);
   }
 
@@ -155,19 +138,17 @@ export class App {
     let src: InputSource;
     try {
       if (kind === 'camera') {
-        const cam = new CameraSource({
+        src = new CameraSource({
           segmentation: this.rt.flags.segmentation,
           preferWorker: this.rt.flags.worker,
           onProgress: (stage, loaded, total) => {
-            const order = ['wasm', 'pose', 'segmenter', 'init'];
+            const order = ['wasm', 'hand', 'segmenter', 'init'];
             const i = Math.max(0, order.indexOf(stage));
             const frac = (i + (total ? loaded / total : 0)) / order.length;
-            const label = stage === 'init' ? 'からだを みつける じゅんび…' : `よみこみちゅう ${total ? Math.round((loaded / total) * 100) : 0}%`;
-            this.hud.setLoading(0.05 + frac * 0.95, label);
+            this.hud.setLoading(0.05 + frac * 0.95, stage === 'init' ? 'てを みつける じゅんび…' : `よみこみちゅう ${total ? Math.round((loaded / total) * 100) : 0}%`);
           },
         });
         this.hud.setLoading(0.04, 'カメラを じゅんびちゅう…');
-        src = cam;
       } else if (kind === 'mouse') {
         src = new MouseSource((x, y) => this.gfx.layout.screenToView(x, y));
         document.body.classList.add('cursor');
@@ -175,15 +156,12 @@ export class App {
         if (!this.rt.replayUrl) throw new Error('replay needs ?replay=<url>');
         const url = new URL(this.rt.replayUrl, document.baseURI);
         if (url.origin !== location.origin) throw new Error('replay must be same-origin');
-        const rec = parseRecording(await (await fetch(url)).text());
-        src = new ReplaySource(rec, true);
-      } else if (kind === 'autoplay') {
-        const bot = new SynthSource(scripts.visit(1e12), 30);
-        src = bot;
+        src = new ReplaySource(parseRecording(await (await fetch(url)).text()), true);
       } else if (kind === 'empty') {
-        src = new SynthSource(scripts.absent(), 30);
+        src = new HandSynthSource(() => []);
       } else {
-        src = new SynthSource(scripts.idle(), 30);
+        // synth / autoplay: a scripted visitor (the bot follows the phases).
+        src = new HandSynthSource((t) => [relaxedHand({ ...defaultHand('R'), wrist: { x: 0.6 + Math.sin(t / 900) * 0.01, y: 0.7 } }, 0.15)]);
       }
       this.source = src;
       this.sourceOff.push(src.frames.on((f) => this.onFrame(f)));
@@ -203,9 +181,9 @@ export class App {
     this.source?.stop();
     this.source = null;
     document.body.classList.remove('cursor');
-    this.tracker.reset();
+    this.engine.reset();
     this.fieldBuilder.reset();
-    this.body = null;
+    this.gframe = null;
   }
 
   private showSourceError(kind: Runtime['source'], e: unknown): void {
@@ -217,52 +195,48 @@ export class App {
       notfound: 'カメラが見つかりません。',
       inuse: 'カメラがほかのアプリで使われています。',
       unsupported: 'このブラウザではカメラが使えません。',
-      tracking: '姿勢推定の初期化に失敗しました。',
+      tracking: '手の認識の初期化に失敗しました。',
     };
     this.hud.setError(
       'カメラが つかえません',
       [msg[code] ?? 'カメラを開始できませんでした。', '5秒後に <code>マウス</code> であそべる緊急モードに切り替えます。'],
       `staff: ${String((e as Error)?.message ?? e)} — 復旧: カメラを接続しなおして R キー（再試行）。docs/operations.md 参照`,
     );
-    if (kind === 'camera') {
-      setTimeout(() => {
-        if (this.phase === 'error') void this.startSource('mouse');
-      }, 5000);
-    }
+    if (kind === 'camera') setTimeout(() => this.phase === 'error' && void this.startSource('mouse'), 5000);
   }
 
   // ───────────────────────── input ─────────────────────────
 
   private onFrame(f: PoseFrame): void {
     const now = this.rt.virtualTime ? this.clock() : performance.now();
-    this.people = f.poses.length;
     if (f.luma !== undefined) this.latestLuma = f.luma;
-    this.recorder?.push(f);
-    const b = this.tracker.update(f);
-    this.body = b;
-    if (f.timing) {
-      this.lat.pipeline = f.timing.inferEnd - f.t;
-      this.lat.pendingReceipt = now;
-    } else {
-      this.lat.pipeline = now - f.t;
-      this.lat.pendingReceipt = now;
-    }
-    // Prediction horizon: compensate part of the measured display latency.
-    this.tracker.predictMs = LATENCY.predictFraction * (this.lat.pipeline + this.lat.display);
-    if (b.present) this.stability.push({ conf: b.conf, jitter: b.jitter, luma: this.latestLuma });
-    if (this.source instanceof CameraSource) this.source.lockHint = b.present ? { x: b.anchor.x, y: b.anchor.y } : null;
-
-    if (this.phase === 'calibrate' && this.calib) this.calib.feed(b);
-    if (this.phase === 'play' && this.session) this.session.pushInput(f.t - this.playStart - this.offsetMs, b);
-
-    // Sources without segmentation: build a capsule field from landmarks.
-    const camWithField = this.source instanceof CameraSource;
-    if (!camWithField && this.world.particles && now - this.lastFieldAt > 30) {
+    this.lat.pipeline = (f.timing ? f.timing.inferEnd : now) - f.t;
+    this.lat.pendingReceipt = now;
+    this.engine.tracker.predictMs = LATENCY.predictFraction * (this.lat.pipeline + this.lat.display);
+    const g = this.engine.update(f);
+    this.gframe = g;
+    this.pendingEvents.push(...g.events);
+    if (g.frame.present) this.stability.push({ score: g.frame.score, luma: this.latestLuma });
+    this.onGestureFrame(g);
+    // Sources without a tracker-side field: build the hand field here.
+    if (!(this.source instanceof CameraSource) && this.world.particles && now - this.lastFieldAt > 30) {
       this.lastFieldAt = now;
-      const mask = this.fieldBuilder.maskFromLandmarks(b.present ? b.lm : null);
-      const data = this.fieldBuilder.build(mask, b.present ? b.lm : null, f.t);
+      const lms = g.hands.map((h) => h.lm);
+      const data = this.fieldBuilder.build(this.fieldBuilder.maskFromHands(lms), lms.length ? lms.flat() : null, f.t, HAND_SPLATS);
       this.world.setField(data);
       this.debug.setField(data, TRACKING.fieldW, TRACKING.fieldH);
+    }
+  }
+
+  /** Per-tracking-frame logic (calibration sampling etc.). */
+  private onGestureFrame(g: GestureFrame): void {
+    if (this.phase !== 'calibrate') return;
+    const h = g.hands[0];
+    if (this.calibStep === 'open' || this.calibStep === 'fist') {
+      // Sample after the first 600 ms of each step (time to form the shape).
+      if (h && g.t - this.calibStepAt > 600) this.shapeCal.add(this.calibStep, h.feat);
+    } else if (this.calibStep === 'beat' && this.latCal) {
+      for (const e of g.events) if (e.type === 'stance' && e.shape === 'fist') this.latCal.addEvent(e.t);
     }
   }
 
@@ -273,6 +247,7 @@ export class App {
 
   private onKey(e: KeyboardEvent): void {
     const k = e.key.toLowerCase();
+    if (this.source?.kind === 'mouse' && /^[0-9]$|^arrow|^[+=\-gz ]$/.test(k)) return; // mouse-mode controls
     if (k === 'd') this.debug.toggle();
     else if (k === 'f') {
       if (document.fullscreenElement) void document.exitFullscreen();
@@ -280,36 +255,11 @@ export class App {
     } else if (k === 'k') {
       this.calm = !this.calm;
       this.applyCalm();
-    } else if (k === 'm' && !e.repeat) {
-      void this.startSource(this.source?.kind === 'mouse' ? 'camera' : 'mouse');
-    } else if (k === 'r' && !e.repeat) {
+    } else if (k === 'm' && !e.repeat) void this.startSource(this.source?.kind === 'mouse' ? 'camera' : 'mouse');
+    else if (k === 'r' && !e.repeat) {
       if (this.phase === 'error') void this.startSource(this.rt.source);
       else this.softReset('staff');
-    } else if (k === 's' && !e.repeat && this.phase === 'title') {
-      this.forceSeated = !this.forceSeated;
-    } else if (k === 'a' && !e.repeat && this.source?.kind !== 'mouse') {
-      // Audience window for a second monitor (same browser; BroadcastChannel).
-      window.open('./audience', 'aura-audience', 'popup');
-    } else if (k === 'p' && this.rt.dev && !e.repeat) {
-      this.toggleRecording();
-    }
-  }
-
-  private toggleRecording(): void {
-    if (!this.recorder) {
-      this.recorder = new Recorder();
-      console.info('[aura] recording landmarks (no images)…');
-      return;
-    }
-    const rec = this.recorder.finish({ createdAt: new Date().toISOString(), source: this.source?.kind });
-    this.recorder = null;
-    // Saved locally via a Blob download — never sent anywhere.
-    const blob = new Blob([JSON.stringify(rec)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `aura-pose-${Date.now()}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } else if (k === 'a' && !e.repeat) window.open('./audience', 'aura-audience', 'popup');
   }
 
   private applyCalm(): void {
@@ -322,110 +272,63 @@ export class App {
   private setPhase(p: Phase): void {
     this.phase = p;
     this.phaseAt = this.clock();
-    this.hud.show(p);
+    this.hud.show(p === 'practice' ? 'play' : p);
     if (p !== 'title') this.stopDemo();
     if (p === 'title') {
       this.presence.reset();
-      this.buttons.set([]);
-      this.hud.setButtons([], 'title');
-      this.botScript();
       this.maybeActivateUpdate();
     }
-  }
-
-  private nextSeed(): number {
-    if (this.rt.seed !== null) return this.rt.seed;
-    this.seedCounter = hash32(this.seedCounter + 0x9e37);
-    return this.seedCounter;
+    this.botScript();
   }
 
   private startCalibration(now: number): void {
-    this.seatedThisRun = this.forceSeated || !(this.body?.lowerBodyVisible ?? true);
+    this.world.transform();
     if (this.calibrated) {
-      this.startPlay(now);
+      this.startPractice();
       return;
     }
-    this.calib = new LatencyCalibrator(now, this.rt.calibPulses, this.rt.calibIntervalMs);
+    this.shapeCal = new GestureCalibrator();
     this.setPhase('calibrate');
-    this.hud.setCalib(this.calib.pulses.length, 0, 'ひかりが あわさったら てを たたいて');
-    this.world.transform();
+    this.setCalibStep('open', now);
+  }
+
+  private setCalibStep(step: CalibStep, now: number): void {
+    this.calibStep = step;
+    this.calibStepAt = now;
+    if (step === 'beat') this.latCal = new LatencyCalibrator(now, this.rt.calibPulses, this.rt.calibIntervalMs);
+    const text = step === 'open' ? 'てを おおきく ひらいて' : step === 'fist' ? 'ぎゅっと にぎって' : 'ひかりが あわさったら にぎって';
+    this.hud.setCalib(step === 'beat' ? this.rt.calibPulses : 0, 0, text);
     this.botScript();
   }
 
   private finishCalibration(): void {
-    if (!this.calib) return;
-    const r = this.calib.result();
-    this.offsetMs = r.offsetMs;
-    this.calibrated = r.accepted;
-    console.info('[aura] calibration', r);
-    this.calib = null;
-  }
-
-  private startPlay(now: number): void {
-    const f = this.rt.flags;
-    this.stage = generateValidStage({
-      seed: this.nextSeed(),
-      seated: this.seatedThisRun,
-      flow: f.flow,
-      wall: f.wall,
-      dodge: f.dodge,
-      structure: f.structure,
-      durationMs: this.rt.stageMs,
-    });
-    this.session = new GameSession({ stage: this.stage, dda: f.dda, windowScale: () => (this.unstable ? JUDGE.unstableWindowScale : 1) });
-    this.playStart = now;
-    this.sectionIdx = -1;
-    this.world.reset();
-    this.hud.setSections(this.stage.sections.map((s) => s.kind));
-    this.setPhase('play');
-    this.botScript();
-  }
-
-  private endPlay(): void {
-    const s = this.session;
-    if (!s) return;
-    const sc = s.score;
-    const nick = nickname(hash32(s.stage.seed ^ sc.score));
-    const entry = { score: sc.score, name: nick, rank: rankOf(sc), at: Date.now(), seated: s.stage.seated };
-    const todayBest = this.scores.today().reduce((m, e) => Math.max(m, e.score), 0);
-    const placed = this.scores.add(entry);
-    this.resultsInfo = { placed };
-    this.hud.setResults({
-      score: sc.score,
-      rank: entry.rank,
-      maxCombo: sc.maxCombo,
-      counts: sc.counts,
-      nick,
-      placed,
-      ranking: this.scores.list(),
-      flow: sc.flowCaptured,
-      isBest: sc.score > todayBest && sc.score > 0,
-      qrSvg: this.rt.flags.qr && qrAvailable(location) ? this.cardQr({ score: sc.score, rank: entry.rank, combo: sc.maxCombo, name: nick, date: new Date().toISOString().slice(0, 10) }) : null,
-    });
-    this.setPhase('results');
-    this.requireNewVisitor = true;
-    this.botScript();
-  }
-
-  private cardQr(d: Parameters<typeof cardUrl>[1]): string | null {
-    try {
-      const qr = qrcode(0, 'M');
-      qr.addData(cardUrl(document.baseURI, d));
-      qr.make();
-      return qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
-    } catch {
-      return null;
+    const sc = this.shapeCal.result();
+    if (sc.ok) {
+      this.engine.thresholds = sc.thresholds;
+      this.thresholdsCalibrated = true;
     }
+    const r = this.latCal?.result();
+    if (r) {
+      this.offsetMs = r.offsetMs;
+      this.calibrated = r.accepted;
+    }
+    console.info('[aura] calibration', { shapes: sc.ok, latency: r });
+    this.latCal = null;
+  }
+
+  private startPractice(): void {
+    this.castCount = 0;
+    this.setPhase('practice');
+    this.hud.setSections([]);
+    this.hud.setScoreVisible(false);
   }
 
   private softReset(reason: string): void {
     console.warn('[aura] soft reset:', reason);
-    this.session = null;
-    this.calib = null;
+    this.latCal = null;
     this.world.reset();
-    this.tracker.reset();
-    this.body = null;
-    this.requireNewVisitor = false;
+    this.engine.reset();
+    this.gframe = null;
     if (this.source) this.setPhase('title');
   }
 
@@ -463,7 +366,6 @@ export class App {
       this.gfx.setEffects(this.quality.state.effects && this.rt.flags.fx);
     }
 
-    // Input.
     this.source?.tick(now);
     if (this.lat.pendingReceipt) {
       this.lat.display = now - this.lat.pendingReceipt + dtMs * 0.5;
@@ -471,75 +373,62 @@ export class App {
     }
     const t1 = performance.now();
     this.updateStability();
+    const events = this.pendingEvents;
+    this.pendingEvents = [];
+    const g = this.gframe;
+    const present = !!g?.frame.present;
 
-    // Phase logic.
-    let events: GameEvent[] = [];
-    let showBody: BodySnapshot | null = this.body?.present ? this.body : null;
-    let showSession: GameSession | null = null;
-    let gameT = 0;
-    let beatMs = 0;
-    const b = this.body;
+    let showFrame: GestureFrame | null = g;
+    let ghost: SynthHand[] | null = null;
     switch (this.phase) {
       case 'title': {
-        this.presence.update(now, b, this.placement);
-        if (b?.newVisitor) {
+        this.placement = judgePlacement(g?.frame ?? null);
+        this.presence.update(now, present, this.placement);
+        if (g?.frame.newVisitor) {
           this.calibrated = false;
-          this.requireNewVisitor = false;
-          this.forceSeated = false;
+          this.thresholdsCalibrated = false;
         }
-        const absent = this.presence.absentFor(now);
-        if (this.requireNewVisitor && absent > 1500) this.requireNewVisitor = false;
-        const attract = absent > this.rt.attractDelayMs && !this.emergency;
+        const attract = this.presence.absentFor(now) > this.rt.attractDelayMs && !this.emergency;
         if (attract) {
           this.runDemo(now);
-          showBody = this.demo?.body ?? null;
-          showSession = this.demo?.session ?? null;
-          gameT = this.demo ? now - this.demo.start : 0;
-          beatMs = this.demo?.stage.beatMs ?? 0;
-          if (this.demo) events = this.demo.session.update(gameT);
+          showFrame = this.demo?.frame ?? null;
         } else if (this.demo) {
           this.stopDemo();
           this.world.transform();
         }
-        const pi = judgePlacement(b, { forceSeated: this.forceSeated, preferStanding: !this.forceSeated && this.presence.presentFor(now) < this.rt.preferStandingMs });
-        this.placement = this.requireNewVisitor ? 'none' : pi.placement;
-        const progress = this.presence.startProgress(now);
-        this.hud.setTitle({ attract, placement: attract ? 'none' : this.placement, progress, seated: pi.seated, waitingNext: this.requireNewVisitor && !!b?.present });
-        this.updateButtons(now, attract ? [] : [{ id: 'seat', label: this.forceSeated ? 'たって<br>あそぶ' : 'すわって<br>あそぶ' }], 'title');
-        if (!attract && this.presence.ready(now) && !this.requireNewVisitor) this.startCalibration(now);
+        this.hud.setTitle({ attract, placement: attract ? 'none' : this.placement, progress: this.presence.startProgress(now) });
+        if (!attract && this.presence.ready(now)) this.startCalibration(now);
         break;
       }
       case 'calibrate': {
-        const c = this.calib;
-        if (c) {
-          this.hud.setCalib(c.pulses.length, c.matched());
-          if (now > c.endT + 250) {
+        const el = now - this.calibStepAt;
+        if (this.calibStep === 'open') {
+          ghost = [withShape({ ...defaultHand('L'), wrist: { x: 0.3, y: 0.62 }, size: 0.13 }, 'open')];
+          if (el > 1700) this.setCalibStep('fist', now);
+        } else if (this.calibStep === 'fist') {
+          ghost = [withShape({ ...defaultHand('L'), wrist: { x: 0.3, y: 0.62 }, size: 0.13 }, 'fist')];
+          if (el > 1700) this.setCalibStep('beat', now);
+        } else if (this.latCal) {
+          this.hud.setCalib(this.latCal.pulses.length, this.latCal.matched());
+          if (now > this.latCal.endT + 250) {
             this.finishCalibration();
-            this.startPlay(now);
+            this.startPractice();
           }
         }
-        this.presence.update(now, b, b?.present ? 'ok' : 'none');
+        this.presence.update(now, present, present ? 'ok' : 'none');
         if (this.presence.absentFor(now) > 3000) this.setPhase('title');
         break;
       }
-      case 'play': {
-        const s = this.session!;
-        gameT = now - this.playStart;
-        beatMs = s.stage.beatMs;
-        events = s.update(gameT);
-        showSession = s;
-        this.handlePlayEvents(events);
-        const sc = s.score;
-        this.hud.setPlay(sc.score, sc.combo, multiplier(sc.combo), gameT / s.stage.durationMs);
-        this.presence.update(now, b, b?.present ? 'ok' : 'none');
+      case 'practice': {
+        for (const e of events) {
+          if (e.type !== 'cast') continue;
+          this.castCount++;
+          const how = e.release === 'hold' ? '' : e.release === 'sigil' ? `＋${SIGIL_LABEL[e.sigil!]}` : e.release === 'twoHand' ? '＋りょうて' : `＋${MOTION_LABEL[e.release]}`;
+          this.lastCast = { label: `${SHAPE_LABEL[e.shape]}${how}`, at: now };
+          this.hud.announce(this.lastCast.label);
+        }
+        this.presence.update(now, present, present ? 'ok' : 'none');
         if (this.presence.empty(now)) this.softReset('player left');
-        else if (s.ended) this.endPlay();
-        break;
-      }
-      case 'results': {
-        this.presence.update(now, b, b?.present ? 'ok' : 'none');
-        this.updateButtons(now, [{ id: 'again', label: 'もう<br>いちど' }], 'results');
-        if (now - this.phaseAt > this.rt.resultsMs) this.setPhase('title');
         break;
       }
       default:
@@ -548,22 +437,18 @@ export class App {
     this.hud.setWarning(this.warningText());
     const t2 = performance.now();
 
-    // Render.
-    if (showSession && events.length) this.world.onEvents(events, now, showSession);
-    const energy = this.phase === 'play' ? (this.session?.section === 'finale' ? 1 : 0.7) : 0.3;
+    if (events.length) this.world.onGestureEvents(events, g, now);
     this.world.update({
       now,
       dt,
-      body: showBody,
-      session: showSession,
-      gameT,
-      beatMs: beatMs || (this.phase === 'title' ? 1200 : 0),
-      skeleton: true,
+      gesture: showFrame,
+      ghost,
+      beatMs: 0,
+      beatT: now,
       particles: this.rt.flags.particles,
-      calib: this.phase === 'calibrate' && this.calib ? { pulses: this.calib.pulses, now, intervalMs: this.calib.intervalMs, lastClap: this.calib.lastClap } : null,
-      energy,
-      showGame: this.phase === 'play' || (this.phase === 'title' && !!this.demo),
-      bodyDim: this.phase === 'results' ? 0.75 : 0,
+      calib: this.phase === 'calibrate' && this.latCal ? { pulses: this.latCal.pulses, now, intervalMs: this.latCal.intervalMs, lastEvent: this.latCal.lastEvent } : null,
+      energy: this.phase === 'practice' ? 0.7 : 0.3,
+      icons: this.phase !== 'title' || !!this.demo,
     });
     const t3 = performance.now();
     this.gfx.render();
@@ -576,7 +461,10 @@ export class App {
       this.breakdown['track.seg'] = st.segMs;
       this.breakdown['track.fld'] = st.fieldMs;
     }
-    if (this.debug.shown) this.debug.update(now, this.debugStats());
+    if (this.debug.shown) {
+      this.debug.setHand(g?.hands[0] ?? null);
+      this.debug.update(now, this.debugStats());
+    }
     this.broadcast(now);
     if (now - this.lastWatchdogAt > 1000) {
       this.lastWatchdogAt = now;
@@ -584,11 +472,151 @@ export class App {
     }
   }
 
-  /**
-   * Benchmark (?bench=1): 6 s per particle level (first 1 s discarded), with
-   * whatever tracking the source runs. Results go to the console and are
-   * downloadable as JSON (used to fill docs/perf.md on the exhibition PC).
-   */
+  private updateStability(): void {
+    const n = this.stability.length;
+    if (n < 15) {
+      this.unstable = false;
+      return;
+    }
+    let score = 0;
+    let luma = 0;
+    for (let i = 0; i < n; i++) {
+      score += this.stability.at(i)!.score;
+      luma += this.stability.at(i)!.luma;
+    }
+    score /= n;
+    luma /= n;
+    const was = this.unstable;
+    this.unstable = score < TRACKING.unstableScore || luma < TRACKING.darkLuma;
+    // Dark-room fallback: only the three core shapes, wider windows (see JUDGE.unstableWindowScale).
+    if (was !== this.unstable) this.engine.opts = { ...this.engine.opts, ...this.engineOptions(this.unstable) };
+  }
+
+  private warningText(): string | null {
+    if (this.phase !== 'practice' && this.phase !== 'calibrate') return null;
+    if ((this.gframe?.frame.ignored ?? 0) > 0) return 'ひとりずつ あそんでね';
+    if (this.unstable) return 'くらいので つかう かたちを へらしています';
+    return null;
+  }
+
+  // ───────────────────────── attract demo ─────────────────────────
+
+  private runDemo(now: number): void {
+    if (!this.demo) {
+      const source = new HandSynthSource(showcase(now), 30);
+      const engine = new GestureEngine({ shapes: SHAPE_IDS, motions: true, sigils: true, twoHand: false });
+      const demo = { source, engine, frame: null as GestureFrame | null, field: new FieldBuilder(TRACKING.fieldW, TRACKING.fieldH) };
+      source.frames.on((f) => {
+        const gf = engine.update(f);
+        demo.frame = gf;
+        this.world.onGestureEvents(gf.events, gf, now);
+        if (this.world.particles) {
+          const lms = gf.hands.map((h) => h.lm);
+          this.world.setField(demo.field.build(demo.field.maskFromHands(lms), lms.length ? lms.flat() : null, f.t, HAND_SPLATS));
+        }
+      });
+      void source.start();
+      this.demo = demo;
+      this.world.transform();
+    }
+    this.demo.source.tick(now);
+  }
+
+  private stopDemo(): void {
+    if (!this.demo) return;
+    this.demo.source.stop();
+    this.demo.source.frames.clear();
+    this.demo = null;
+    this.world.reset();
+  }
+
+  // ───────────────────────── autoplay bot (E2E / soak) ─────────────────────────
+
+  private botScript(): void {
+    if (this.rt.source !== 'autoplay' || !(this.source instanceof HandSynthSource)) return;
+    const bot = this.source;
+    const now = this.clock();
+    let script: HandScript;
+    if (this.phase === 'title') {
+      const arrive = now + 800;
+      const idle = perform([], 'R');
+      script = (t) => (t < arrive ? [] : idle(t));
+    } else if (this.phase === 'calibrate' && this.calibStep === 'open') {
+      script = perform([{ at: now + 200, shape: 'open', holdMs: 1400 }], 'R');
+      const s = script;
+      script = (t) => s(t);
+    } else if (this.phase === 'calibrate' && this.calibStep === 'fist') {
+      script = perform([{ at: now + 100, shape: 'fist', holdMs: 1500 }], 'R');
+    } else if (this.phase === 'calibrate' && this.calibStep === 'beat' && this.latCal) {
+      // Make a fist exactly on each pulse (stance fires ~2 frames after forming).
+      script = perform(this.latCal.pulses.map((p) => ({ at: p - 200, shape: 'fist' as const, holdMs: 250, formMs: 140 })), 'R');
+    } else if (this.phase === 'practice') {
+      const shows = showcase(now);
+      const leaveAt = now + (this.rt.fast ? 9000 : 1e12);
+      script = (t) => (t < leaveAt ? shows(t) : []);
+    } else return;
+    bot.script = script;
+  }
+
+  // ───────────────────────── health ─────────────────────────
+
+  private runWatchdog(now: number): void {
+    const cam = this.source instanceof CameraSource ? this.source : null;
+    const act = this.watchdog.check({
+      now,
+      lastFrameAt: this.lastLoopAt,
+      trackingAge: cam ? cam.resultAge : 0,
+      trackingExpected: !!cam && this.phase !== 'loading' && this.phase !== 'error',
+      cameraTrackEnded: cam?.trackEnded ?? false,
+    });
+    if (cam && cam.resultAge < 1000) this.watchdog.noteTrackingHealthy();
+    if (act === 'softReset') this.softReset('error storm');
+    else if (act === 'restartTracking') void this.startSource('camera');
+    else if (act === 'reload') this.reload('watchdog');
+  }
+
+  private checkStall(): void {
+    if (document.visibilityState === 'visible' && performance.now() - this.lastLoopAt > EXHIBIT.watchdog.rafStallMs) this.reload('main loop stalled');
+  }
+
+  private reload(why: string): void {
+    console.error('[aura] reload:', why);
+    let ss: Storage | null = null;
+    try {
+      ss = sessionStorage;
+    } catch {
+      /* blocked */
+    }
+    if (canReload(Date.now(), ss)) location.reload();
+  }
+
+  private registerServiceWorker(): void {
+    if (!import.meta.env.PROD || !('serviceWorker' in navigator) || this.rt.fast) return;
+    navigator.serviceWorker
+      .register('./sw.js')
+      .then((reg) => {
+        const track = (w: ServiceWorker | null) =>
+          w?.addEventListener('statechange', () => {
+            if (w.state === 'installed' && navigator.serviceWorker.controller) this.swWaiting = w;
+          });
+        if (reg.waiting && navigator.serviceWorker.controller) this.swWaiting = reg.waiting;
+        track(reg.installing);
+        reg.addEventListener('updatefound', () => track(reg.installing));
+        setInterval(() => void reg.update().catch(() => {}), 30 * 60_000);
+      })
+      .catch((e) => console.warn('[aura] sw registration failed', e));
+    navigator.serviceWorker?.addEventListener('controllerchange', () => {
+      if (this.phase === 'title') location.reload();
+    });
+  }
+
+  private maybeActivateUpdate(): void {
+    if (this.swWaiting && this.presence.absentFor(this.clock()) > 5000) {
+      this.swWaiting.postMessage('SKIP_WAITING');
+      this.swWaiting = null;
+    }
+  }
+
   private runBench(now: number, dtMs: number): void {
     if (this.phase === 'loading' || !this.world.particles) return;
     const levels = RENDER.particleLevels.slice(0, this.quality.maxParticleLevel + 1);
@@ -609,7 +637,6 @@ export class App {
         tracking: cam?.status().backend ?? this.source?.kind ?? 'none',
         trackFps: cam ? Number(cam.stats.fps.toFixed(1)) : 0,
         inferMs: cam ? Number(cam.stats.inferMs.toFixed(2)) : 0,
-        segMs: cam ? Number(cam.stats.segMs.toFixed(2)) : 0,
         frameAvgMs: Number(avg.toFixed(2)),
         frameP95Ms: Number((xs[Math.floor(xs.length * 0.95)] ?? 0).toFixed(2)),
         fps: Number((1000 / avg).toFixed(1)),
@@ -631,17 +658,16 @@ export class App {
   }
 
   private broadcast(now: number): void {
-    const s = this.session;
-    const b = this.body?.present ? this.body : null;
     const cam = this.source instanceof CameraSource ? this.source : null;
+    const g = this.phase === 'title' && this.demo ? this.demo.frame : this.gframe;
     this.audience.send(now, {
       phase: this.phase,
-      score: s?.score.score ?? 0,
-      combo: s?.score.combo ?? 0,
-      section: s?.section ?? null,
-      progress: s ? (now - this.playStart) / s.stage.durationMs : 0,
-      present: !!b,
-      lastJudge: this.lastJudge,
+      score: 0,
+      combo: 0,
+      section: this.lastCast && now - this.lastCast.at < 2000 ? this.lastCast.label : null,
+      progress: 0,
+      present: !!this.gframe?.frame.present,
+      lastJudge: null,
       ranking: this.scores.today(),
       stats: {
         fps: this.fps,
@@ -651,211 +677,14 @@ export class App {
         tracking: cam?.status().backend ?? this.source?.kind ?? 'none',
         trackFps: cam?.stats.fps ?? 30,
       },
-      skeleton: b ? b.lm.flatMap((p) => (p.v > 0.35 ? [p.x, p.y] : [-1, -1])) : null,
+      hands: g ? g.hands.map((h) => h.lm.flatMap((p) => [p.x, p.y])) : null,
     });
-  }
-
-  private handlePlayEvents(events: GameEvent[]): void {
-    const L = this.gfx.layout;
-    for (const e of events) {
-      if (e.type === 'judge') {
-        this.lastJudge = { grade: e.grade, at: Date.now() };
-        const p = L.viewToScreen(e.view);
-        this.hud.judge(e.grade, p.x, p.y - L.h * 0.06);
-      } else if (e.type === 'section') {
-        this.sectionIdx++;
-        this.hud.setSection(this.sectionIdx, e.kind, this.sectionIdx > 0 || e.kind !== 'intro');
-      }
-    }
-  }
-
-  private updateButtons(now: number, specs: Array<{ id: string; label: string }>, layer: 'title' | 'results'): void {
-    const b = this.body?.present ? this.body : null;
-    if (!b || specs.length === 0) {
-      if (this.buttons.buttons.length) this.buttons.set([]);
-      this.hud.setButtons([], layer);
-      return;
-    }
-    const L = this.gfx.layout;
-    // Buttons sit just above shoulder height, an arm's length to the side.
-    const a = b.anchor;
-    const pos = (side: number): Vec2 => ({ x: clamp(a.x + (side * 2.0 * a.unit) / b.aspect, 0.08, 0.92), y: clamp(a.y - 0.7 * a.unit, 0.12, 0.8) });
-    const placed = specs.map((s, i) => ({ id: s.id, label: s.label, pos: pos(specs.length === 1 ? (s.id === 'seat' ? -1 : 1) : i === 0 ? -1 : 1) }));
-    const r = Math.max(EXHIBIT.buttonRadius, a.unit * 0.55);
-    if (this.buttons.buttons.map((x) => x.id).join() !== placed.map((x) => x.id).join()) this.buttons.set(placed.map((p) => ({ id: p.id, pos: p.pos, r })));
-    else this.buttons.buttons = placed.map((p) => ({ id: p.id, pos: p.pos, r }));
-    const fired = this.buttons.update(now, [b.handsPred.L, b.handsPred.R], b.aspect);
-    this.hud.setButtons(
-      placed.map((p) => {
-        const s = L.viewToScreen(p.pos);
-        return { id: p.id, label: p.label, x: s.x, y: s.y, r: r * L.h * L.k };
-      }),
-      layer,
-    );
-    for (const p of placed) this.hud.setButtonProgress(p.id, this.buttons.progressOf(p.id));
-    if (fired === 'seat') {
-      this.forceSeated = !this.forceSeated;
-      this.presence.reset();
-    } else if (fired === 'again') {
-      this.requireNewVisitor = false;
-      this.startPlay(now);
-    }
-  }
-
-  private updateStability(): void {
-    const n = this.stability.length;
-    if (n < 15) {
-      this.unstable = false;
-      return;
-    }
-    let conf = 0;
-    let jit = 0;
-    let luma = 0;
-    for (let i = 0; i < n; i++) {
-      const s = this.stability.at(i)!;
-      conf += s.conf;
-      jit += s.jitter;
-      luma += s.luma;
-    }
-    conf /= n;
-    jit /= n;
-    luma /= n;
-    this.unstable = conf < TRACKING.unstableVisibility || luma < TRACKING.darkLuma || jit > 0.02;
-  }
-
-  private warningText(): string | null {
-    if (this.phase !== 'play' && this.phase !== 'calibrate') return null;
-    if (this.people > 1) return 'ひとりずつ あそんでね';
-    if (this.unstable) return 'くらいので はんていを ひろげています';
-    return null;
-  }
-
-  // ───────────────────────── attract demo ─────────────────────────
-
-  private runDemo(now: number): void {
-    if (this.demo && now - this.demo.start > this.demo.stage.durationMs + 1500) this.stopDemo();
-    if (!this.demo) {
-      const stage = generateValidStage({ seed: 0xa77ac7 + (Math.floor(now / 1000) % 7), seated: false, flow: false, wall: this.rt.flags.wall, dodge: false, structure: false, durationMs: 30_000 });
-      const source = new SynthSource(attractScript(stage), 30);
-      const tracker = new BodyTracker();
-      const session = new GameSession({ stage, dda: false });
-      const demo: Demo = { source, tracker, session, stage, start: now + 1500, body: null, field: new FieldBuilder(TRACKING.fieldW, TRACKING.fieldH) };
-      source.frames.on((f) => {
-        const b = tracker.update(f);
-        demo.body = b;
-        session.pushInput(f.t - demo.start, b);
-        if (this.world.particles) {
-          const m = demo.field.maskFromLandmarks(b.present ? b.lm : null);
-          this.world.setField(demo.field.build(m, b.present ? b.lm : null, f.t));
-        }
-      });
-      void source.start();
-      this.demo = demo;
-      this.world.transform();
-    }
-    this.demo.source.tick(now);
-  }
-
-  private stopDemo(): void {
-    if (!this.demo) return;
-    this.demo.source.stop();
-    this.demo.source.frames.clear();
-    this.demo = null;
-    this.world.reset();
-  }
-
-  // ───────────────────────── autoplay bot (E2E / soak) ─────────────────────────
-
-  private botScript(): void {
-    if (this.rt.source !== 'autoplay' || !(this.source instanceof SynthSource)) return;
-    const bot = this.source;
-    bot.absolute = true;
-    const now = this.clock();
-    if (this.phase === 'title') {
-      // Walk in after a short absence (lets the empty-booth logic run too).
-      const arrive = now + (this.requireNewVisitor ? 2500 : 800);
-      bot.script = (t) => (t < arrive ? null : scripts.idle()(t));
-    } else if (this.phase === 'calibrate' && this.calib) {
-      bot.script = scripts.clapper(this.calib.pulses, 0);
-    } else if (this.phase === 'play' && this.stage) {
-      bot.script = autoplayScript(this.stage, { playStartRel: this.playStart, offsetMs: this.offsetMs, errorMs: 60, missRate: 0.08, seed: this.stage.seed });
-    } else if (this.phase === 'results') {
-      const leave = now + 1200;
-      bot.script = (t) => (t < leave ? scripts.idle()(t) : null);
-    }
-  }
-
-  // ───────────────────────── health ─────────────────────────
-
-  private runWatchdog(now: number): void {
-    const cam = this.source instanceof CameraSource ? this.source : null;
-    const act = this.watchdog.check({
-      now,
-      lastFrameAt: this.lastLoopAt,
-      trackingAge: cam ? cam.resultAge : 0,
-      trackingExpected: !!cam && this.phase !== 'loading' && this.phase !== 'error',
-      cameraTrackEnded: cam?.trackEnded ?? false,
-    });
-    if (cam && cam.resultAge < 1000) this.watchdog.noteTrackingHealthy();
-    if (act === 'softReset') this.softReset('error storm');
-    else if (act === 'restartTracking') {
-      console.warn('[aura] restarting tracking');
-      void this.startSource('camera');
-    } else if (act === 'reload') this.reload('watchdog');
-  }
-
-  private checkStall(): void {
-    const now = performance.now();
-    if (document.visibilityState === 'visible' && now - this.lastLoopAt > EXHIBIT.watchdog.rafStallMs) this.reload('main loop stalled');
-  }
-
-  private reload(why: string): void {
-    console.error('[aura] reload:', why);
-    let ss: Storage | null = null;
-    try {
-      ss = sessionStorage;
-    } catch {
-      /* blocked */
-    }
-    if (canReload(Date.now(), ss)) location.reload();
-  }
-
-  private registerServiceWorker(): void {
-    if (!import.meta.env.PROD || !('serviceWorker' in navigator) || this.rt.fast) return;
-    navigator.serviceWorker
-      .register('./sw.js')
-      .then((reg) => {
-        const track = (w: ServiceWorker | null) => {
-          if (!w) return;
-          w.addEventListener('statechange', () => {
-            if (w.state === 'installed' && navigator.serviceWorker.controller) this.swWaiting = w;
-          });
-        };
-        if (reg.waiting && navigator.serviceWorker.controller) this.swWaiting = reg.waiting;
-        track(reg.installing);
-        reg.addEventListener('updatefound', () => track(reg.installing));
-        // Check for updates every 30 min while running.
-        setInterval(() => void reg.update().catch(() => {}), 30 * 60_000);
-      })
-      .catch((e) => console.warn('[aura] sw registration failed', e));
-    navigator.serviceWorker?.addEventListener('controllerchange', () => {
-      if (this.phase === 'title') location.reload();
-    });
-  }
-
-  /** Activate a waiting SW only while idle at the title (never mid-play). */
-  private maybeActivateUpdate(): void {
-    if (this.swWaiting && this.presence.absentFor(this.clock()) > 5000) {
-      this.swWaiting.postMessage('SKIP_WAITING');
-      this.swWaiting = null;
-    }
   }
 
   private debugStats(): DebugStats {
     const cam = this.source instanceof CameraSource ? this.source : null;
     const n = this.stability.length;
-    const last = n ? this.stability.at(n - 1)! : { conf: 0, jitter: 0, luma: this.latestLuma };
-    const s = this.session;
+    const last = n ? this.stability.at(n - 1)! : { score: 0, luma: this.latestLuma };
     return {
       backend: `${this.gfx.backend} ${this.gfx.layout.w}×${this.gfx.layout.h}`,
       tracking: cam?.status().backend ?? this.source?.kind ?? 'none',
@@ -863,50 +692,52 @@ export class App {
       fps: this.fps,
       frameMs: this.quality.ema,
       breakdown: this.breakdown,
-      latency: { pipeline: this.lat.pipeline, display: this.lat.display, predict: this.tracker.predictMs, calib: this.offsetMs, calibAccepted: this.calibrated },
+      latency: { pipeline: this.lat.pipeline, display: this.lat.display, predict: this.engine.tracker.predictMs, calib: this.offsetMs, calibAccepted: this.calibrated },
       particles: this.world.particles?.count ?? 0,
       quality: `P${this.quality.state.particleLevel} R${this.quality.resolutionScale} FX${this.quality.state.effects ? 1 : 0} (changes ${this.quality.changes})`,
-      conf: last.conf,
-      jitter: last.jitter,
-      people: this.people,
+      conf: last.score,
+      jitter: 0,
+      people: this.gframe?.frame.hands.length ?? 0,
       luma: last.luma,
       unstable: this.unstable,
-      dda: s?.difficulty.level ?? 1,
-      missRate: s?.difficulty.missRate ?? 0,
-      phase: this.phase,
-      seed: s?.stage.seed ?? 0,
+      dda: 1,
+      missRate: 0,
+      phase: this.phase === 'calibrate' ? `calibrate/${this.calibStep}` : this.phase,
+      seed: 0,
       extra: {
         placement: this.placement,
-        seated: this.forceSeated ? 'forced' : String(this.seatedThisRun),
+        thresholds: this.thresholdsCalibrated ? 'calibrated' : 'default',
+        shapes: this.engine.opts.shapes.length,
+        ignoredHands: this.gframe?.frame.ignored ?? 0,
+        casts: this.castCount,
         errors: this.watchdog.errorsLastMinute,
-        recording: this.recorder ? `${this.recorder.length} frames` : 'off',
         attempts: cam ? cam.attempts.map((a) => `${a.mode}/${a.delegate}:${a.ok ? 'ok' : 'x'}`).join(' ') : '-',
-        glyphs: this.world.glyphs.used,
+        windowScale: this.unstable ? JUDGE.unstableWindowScale : 1,
+        chargeMs: GESTURE.chargeMs,
       },
     };
   }
 
-  /** Test hook (E2E/soak): a snapshot of the app state. */
+  /** Test hook (E2E/soak). */
   inspect(): Record<string, unknown> {
-    const s = this.session;
     return {
       t: this.clock(),
-      gameT: this.phase === 'play' ? this.clock() - this.playStart : null,
       phase: this.phase,
+      calibStep: this.phase === 'calibrate' ? this.calibStep : null,
       backend: this.gfx?.backend,
       source: this.source?.kind,
-      present: !!this.body?.present,
-      score: s?.score.score ?? null,
-      counts: s?.score.counts ?? null,
-      section: s?.section ?? null,
-      ended: s?.ended ?? null,
+      present: !!this.gframe?.frame.present,
+      hands: this.gframe?.hands.length ?? 0,
+      shape: this.gframe?.hands[0]?.decision.shape ?? null,
+      stance: this.gframe?.hands[0]?.stance ?? null,
+      casts: this.castCount,
+      lastCast: this.lastCast?.label ?? null,
       offsetMs: this.offsetMs,
       calibrated: this.calibrated,
+      thresholdsCalibrated: this.thresholdsCalibrated,
       particles: this.world?.particles?.count ?? 0,
       fps: this.fps,
       demo: !!this.demo,
-      highscores: this.scores.list().length,
-      placed: this.resultsInfo?.placed ?? null,
       heap: (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? null,
       dom: document.getElementsByTagName('*').length,
       glyphs: this.world?.glyphs.used ?? 0,
@@ -918,14 +749,7 @@ export class App {
 
   /** Test hook (dev/fast only): drive the synthetic visitor. */
   test(cmd: 'leave' | 'return'): void {
-    if (!this.rt.dev || !(this.source instanceof SynthSource)) return;
-    const bot = this.source;
-    bot.absolute = true;
-    if (cmd === 'leave') bot.script = () => null;
-    else bot.script = scripts.idle();
+    if (!this.rt.dev || !(this.source instanceof HandSynthSource)) return;
+    this.source.script = cmd === 'leave' ? () => [] : perform([], 'R');
   }
-
-  /** Test hook: seeded RNG for anything non-game that wants determinism. */
-  readonly rng = new Rng(1);
-  readonly empty = emptySnapshot;
 }

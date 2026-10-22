@@ -63,6 +63,6 @@ describe('utils', () => {
     const f = parseFlags('-particles,+qr,bogus');
     expect(f.particles).toBe(false);
     expect(f.qr).toBe(true);
-    expect(f.wall).toBe(DEFAULT_FLAGS.wall);
+    expect(f.sigils).toBe(DEFAULT_FLAGS.sigils);
   });
 });

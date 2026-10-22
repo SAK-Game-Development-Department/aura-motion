@@ -1,8 +1,8 @@
 import './audience.css';
 import { CHANNEL, type AudienceState } from '../exhibit/broadcast';
-import { BONES } from '../core/types';
+import { HAND_BONES } from '../core/types';
 
-const SECTION: Record<string, string> = { intro: 'ふれる', flow: 'ながれ', wall: 'かたち', dodge: 'よける', finale: 'フィナーレ' };
+const SECTION: Record<string, string> = { intro: 'はじまり', rush: 'むれ', guard: 'まもり', boss: 'ボス' };
 const $ = (id: string) => document.getElementById(id)!;
 const cv = $('mini') as HTMLCanvasElement;
 const ctx = cv.getContext('2d')!;
@@ -22,7 +22,7 @@ function render(): void {
   if (!s) return;
   $('score').textContent = s.phase === 'play' || s.phase === 'results' ? s.score.toLocaleString('ja-JP') : '';
   $('combo').textContent = s.phase === 'play' && s.combo >= 3 ? `${s.combo} コンボ` : '';
-  $('section').textContent = s.phase === 'play' ? SECTION[s.section ?? ''] ?? '' : s.phase === 'title' ? (s.present ? 'まもなく スタート' : 'つぎの ひと まってるよ') : s.phase === 'results' ? 'けっか' : '';
+  $('section').textContent = s.section ? SECTION[s.section] ?? s.section : s.phase === 'title' ? (s.present ? 'まもなく スタート' : 'つぎの ひと まってるよ') : s.phase === 'results' ? 'けっか' : '';
   ($('bar') as HTMLElement).style.width = `${Math.round((s.phase === 'play' ? s.progress : 0) * 100)}%`;
   $('rank').innerHTML = s.ranking
     .slice(0, 8)
@@ -40,8 +40,8 @@ function drawMini(): void {
   const W = (cv.width = cv.clientWidth * devicePixelRatio);
   const H = (cv.height = cv.clientHeight * devicePixelRatio);
   ctx.clearRect(0, 0, W, H);
-  const sk = state?.skeleton;
-  if (!sk) return;
+  const hands = state?.hands;
+  if (!hands) return;
   ctx.strokeStyle = '#3ff2ff';
   ctx.shadowColor = '#3ff2ff';
   ctx.shadowBlur = 12;
@@ -52,13 +52,14 @@ function drawMini(): void {
   const vh = (vw * 9) / 16;
   const ox = (W - vw) / 2;
   const oy = (H - vh) / 2;
-  for (const [a, b] of BONES) {
-    const ax = sk[a * 2]!, ay = sk[a * 2 + 1]!, bx = sk[b * 2]!, by = sk[b * 2 + 1]!;
-    if (ax < 0 || bx < 0) continue;
-    ctx.beginPath();
-    ctx.moveTo(ox + ax * vw, oy + ay * vh);
-    ctx.lineTo(ox + bx * vw, oy + by * vh);
-    ctx.stroke();
+  for (const sk of hands) {
+    for (const [a, b] of HAND_BONES) {
+      const ax = sk[a * 2]!, ay = sk[a * 2 + 1]!, bx = sk[b * 2]!, by = sk[b * 2 + 1]!;
+      ctx.beginPath();
+      ctx.moveTo(ox + ax * vw, oy + ay * vh);
+      ctx.lineTo(ox + bx * vw, oy + by * vh);
+      ctx.stroke();
+    }
   }
 }
 drawMini();

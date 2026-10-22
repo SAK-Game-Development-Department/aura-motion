@@ -1,10 +1,9 @@
-// TrackerCore: MediaPipe Pose Landmarker + Image Segmenter + field building.
+// TrackerCore: MediaPipe Hand Landmarker (+ optional Image Segmenter) + field building.
 // Context-agnostic: runs inside the tracking Web Worker or on the main thread
 // (fallback). Frames are processed locally and discarded immediately — no
 // image ever leaves this function (privacy).
-import { FilesetResolver, ImageSegmenter, PoseLandmarker } from '@mediapipe/tasks-vision';
-import type { Landmark } from '../../core/types';
-import { FieldBuilder } from './field';
+import { FilesetResolver, HandLandmarker, ImageSegmenter } from '@mediapipe/tasks-vision';
+import { FieldBuilder, HAND_SPLATS } from './field';
 import type { TrackerFrame, TrackerInit, TrackerOut } from './protocol';
 
 type Post = (m: TrackerOut, transfer?: Transferable[]) => void;
@@ -49,7 +48,7 @@ function makeCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
 }
 
 export class TrackerCore {
-  private pose: PoseLandmarker | null = null;
+  private hands: HandLandmarker | null = null;
   private seg: ImageSegmenter | null = null;
   private field: FieldBuilder | null = null;
   private small: OffscreenCanvas | HTMLCanvasElement | null = null;
@@ -67,7 +66,7 @@ export class TrackerCore {
     const variant = useModule ? 'vision_wasm_module_internal' : 'vision_wasm_internal';
     // Warm the cache with progress reporting (the loader then hits the HTTP/SW cache).
     await fetchWithProgress(`${base}wasm/${variant}.wasm`, 'wasm', this.post);
-    const poseBuf = await fetchWithProgress(`${base}models/pose_landmarker_${cfg.poseModel}.task`, 'pose', this.post);
+    const handBuf = await fetchWithProgress(`${base}models/hand_landmarker.task`, 'hand', this.post);
     const segBuf = cfg.segmentation ? await fetchWithProgress(`${base}models/selfie_segmenter.tflite`, 'segmenter', this.post) : null;
 
     const fileset = await FilesetResolver.forVisionTasks(`${base}wasm`, useModule);
@@ -87,14 +86,13 @@ export class TrackerCore {
     };
     this.post({ type: 'progress', stage: 'init', loaded: 0, total: 1 });
     restoreFactory();
-    this.pose = await PoseLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetBuffer: poseBuf, delegate: cfg.delegate },
+    this.hands = await HandLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetBuffer: handBuf, delegate: cfg.delegate },
       runningMode: 'VIDEO',
-      numPoses: cfg.numPoses,
-      minPoseDetectionConfidence: cfg.minPoseDetectionConfidence,
-      minPosePresenceConfidence: cfg.minPosePresenceConfidence,
+      numHands: cfg.numHands,
+      minHandDetectionConfidence: cfg.minHandDetectionConfidence,
+      minHandPresenceConfidence: cfg.minHandPresenceConfidence,
       minTrackingConfidence: cfg.minTrackingConfidence,
-      outputSegmentationMasks: false,
       ...(cfg.delegate === 'GPU' ? { canvas: makeCanvas(1, 1) } : {}),
     });
     if (segBuf) {
@@ -121,7 +119,7 @@ export class TrackerCore {
 
   process(f: TrackerFrame): void {
     const cfg = this.cfg;
-    if (!this.pose || !this.field || !this.smallCtx || !this.mask || !cfg) {
+    if (!this.hands || !this.field || !this.smallCtx || !this.mask || !cfg) {
       f.bitmap.close();
       return;
     }
@@ -129,11 +127,12 @@ export class TrackerCore {
       const ts = Math.max(this.lastTs + 1, Math.round(f.t));
       this.lastTs = ts;
       const t0 = performance.now();
-      const res = this.pose.detectForVideo(f.bitmap, ts);
+      const hr = this.hands.detectForVideo(f.bitmap, ts);
+      const hands = hr.landmarks.map((lms, i) => ({
+        lm: lms.map((p) => ({ x: 1 - p.x, y: p.y, z: p.z, v: 1 })),
+        score: hr.handedness[i]?.[0]?.score ?? 1,
+      }));
       const t1 = performance.now();
-      const poses: Landmark[][] = res.landmarks.map((lms) =>
-        lms.map((p) => ({ x: 1 - p.x, y: p.y, z: p.z, v: p.visibility ?? 1 })),
-      );
 
       // Small frame: luma + segmentation input.
       const W = cfg.fieldW;
@@ -145,7 +144,6 @@ export class TrackerCore {
       const luma = lsum / (img.data.length / 16) / 255;
 
       let segMs = 0;
-      const lockLm = pickNearest(poses, f.lockHint);
       let maskSrc: Float32Array;
       if (this.seg && f.segment) {
         const s0 = performance.now();
@@ -171,14 +169,14 @@ export class TrackerCore {
       } else if (this.seg) {
         maskSrc = this.mask; // reuse last mask on skipped frames
       } else {
-        maskSrc = this.field.maskFromLandmarks(lockLm);
+        maskSrc = this.field.maskFromHands(hands.map((h) => h.lm));
       }
       const f0 = performance.now();
-      const packed = this.field.build(maskSrc, lockLm, f.t);
+      const packed = this.field.build(maskSrc, hands.length ? hands.flatMap((h) => h.lm) : null, f.t, HAND_SPLATS);
       const field = packed.slice();
       const fieldMs = performance.now() - f0;
       this.post(
-        { type: 'result', id: f.id, t: f.t, inferMs: t1 - t0, segMs, fieldMs, poses, luma, field, fieldW: W, fieldH: H },
+        { type: 'result', id: f.id, t: f.t, inferMs: t1 - t0, segMs, fieldMs, hands, luma, field, fieldW: W, fieldH: H },
         [field.buffer],
       );
     } catch (e) {
@@ -189,27 +187,9 @@ export class TrackerCore {
   }
 
   dispose(): void {
-    this.pose?.close();
+    this.hands?.close();
     this.seg?.close();
-    this.pose = null;
+    this.hands = null;
     this.seg = null;
   }
-}
-
-function pickNearest(poses: Landmark[][], hint: { x: number; y: number } | null): Landmark[] | null {
-  if (poses.length === 0) return null;
-  if (!hint || poses.length === 1) return poses[0]!;
-  let best = poses[0]!;
-  let bd = Infinity;
-  for (const p of poses) {
-    const ls = p[11];
-    const rs = p[12];
-    if (!ls || !rs) continue;
-    const d = Math.hypot((ls.x + rs.x) / 2 - hint.x, (ls.y + rs.y) / 2 - hint.y);
-    if (d < bd) {
-      bd = d;
-      best = p;
-    }
-  }
-  return best;
 }

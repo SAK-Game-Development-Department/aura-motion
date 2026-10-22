@@ -12,8 +12,8 @@ export interface AudienceState {
   lastJudge: { grade: string; at: number } | null;
   ranking: ScoreEntry[];
   stats: { fps: number; latencyMs: number; particles: number; backend: string; tracking: string; trackFps: number };
-  /** Coarse body skeleton (view coords) for the audience mini-view. */
-  skeleton: number[] | null;
+  /** Hand landmarks (view coords, [x0,y0,x1,y1,…] per hand) for the audience mini-view. */
+  hands: number[][] | null;
 }
 
 export const CHANNEL = 'aura-audience-v1';

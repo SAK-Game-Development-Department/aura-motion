@@ -1,29 +1,29 @@
-// WorldView: turns game state + body + events into light. Owns the particle
-// system, glyph batch, walls, sparks and the safety-limited FX.
-import { DODGE, JUDGE, LATENCY, PALETTE, POSE, SAFETY, hexToLinear } from '../config';
+// WorldView: hands → light. Owns the particle system (hands as particles),
+// the glyph batch (light skeleton, fingertip trails, stance icons & charge
+// rings, sigil strokes, ghost hands), sparks and the safety-limited FX.
+import { PALETTE, SAFETY, hexToLinear } from '../config';
 import { clamp, ease } from '../core/math';
-import { BONES, LM, type Vec2 } from '../core/types';
-import type { BodySnapshot } from '../input/body';
-import type { GameEvent, GameSession } from '../game/session';
-import { POSES } from '../stage/poses';
+import { HAND_BONES, type Landmark, type Vec2 } from '../core/types';
+import type { GestureEvent, GestureFrame, GestureHand } from '../gesture/engine';
+import { buildHand, defaultHand, withShape, type ShapeId, type SynthHand } from '../gesture/handModel';
 import { Background } from './background';
 import { FlashLimiter, Shake } from './fx/safety';
 import type { Gfx } from './gfx';
 import { GlyphBatch, Shape, Sparks } from './glyphs';
 import { Particles } from './particles/particles';
-import { Walls } from './walls';
 
 type RGB = readonly [number, number, number];
-const C = {
+export const C = {
   cyan: hexToLinear(PALETTE.cyan) as RGB,
   magenta: hexToLinear(PALETTE.magenta) as RGB,
   amber: hexToLinear(PALETTE.amber) as RGB,
   white: hexToLinear(PALETTE.white) as RGB,
   dim: [0.05, 0.07, 0.2] as RGB,
+  ghost: [0.35, 0.42, 0.9] as RGB,
 };
 
 interface Effect {
-  kind: 'ring' | 'fall' | 'goalPulse';
+  kind: 'ring' | 'fall';
   x: number;
   y: number;
   t0: number;
@@ -33,41 +33,42 @@ interface Effect {
 }
 
 export interface CalibVisual {
-  /** Pulse times and the current time in the same clock. */
   pulses: number[];
   now: number;
   intervalMs: number;
-  /** Last detected clap (same clock) for feedback. */
-  lastClap: number | null;
+  lastEvent: number | null;
 }
 
 export interface WorldFrame {
   now: number;
   dt: number;
-  body: BodySnapshot | null;
-  session: GameSession | null;
-  /** Game time for the session (ms). */
-  gameT: number;
+  gesture: GestureFrame | null;
+  /** Translucent demonstration hands (synthetic). */
+  ghost: SynthHand[] | null;
   beatMs: number;
-  /** Show the skeleton light lines (Tier 0 silhouette). */
-  skeleton: boolean;
+  beatT: number;
   particles: boolean;
   calib: CalibVisual | null;
-  /** Energy 0..1 (title=0.3, play=0.7, finale=1). */
+  /** Energy 0..1 (title=0.3, play=0.7, boss=1). */
   energy: number;
-  /** Hide game objects (title/results). */
-  showGame: boolean;
-  /** 0..1 dims the light-line body and hand glows (results screen). */
-  bodyDim?: number;
+  /** 0..1 dims the hands (results screen). */
+  dim?: number;
+  /** Show the recognised-shape icon above the hand. */
+  icons: boolean;
 }
 
-const KEYPOINT_IDX = [LM.nose, LM.leftShoulder, LM.rightShoulder, LM.leftElbow, LM.rightElbow, LM.leftWrist, LM.rightWrist, LM.leftHip, LM.rightHip, LM.leftKnee, LM.rightKnee, LM.leftAnkle, LM.rightAnkle, LM.leftIndex, LM.rightIndex, LM.leftHip];
+const KEYPOINTS = [0, 4, 8, 12, 16, 20, 5, 9, 13, 17, 2, 6, 10, 14, 18, 3];
+const TRAIL = 18;
+
+/** Colour per shape family (colour is never the only cue: icons and motion differ too). */
+export function shapeColor(s: ShapeId): RGB {
+  return s === 'fist' || s === 'thumb' || s === 'horn' ? C.amber : s === 'open' || s === 'pinch' ? C.cyan : C.magenta;
+}
 
 export class WorldView {
   readonly bg = new Background();
-  readonly glyphs = new GlyphBatch(1400);
-  readonly sparks = new Sparks(700);
-  readonly walls = new Walls(3);
+  readonly glyphs = new GlyphBatch(2400);
+  readonly sparks = new Sparks(900);
   readonly flash = new FlashLimiter(SAFETY.defaultFlashIntensity);
   readonly shake = new Shake(SAFETY.defaultShakeIntensity);
   particles: Particles | null = null;
@@ -75,12 +76,12 @@ export class WorldView {
   private hitStopUntil = 0;
   private reveal = 0;
   private revealTarget = 0;
-  private presentSince: number | null = null;
-  private lastEventOrbView = new Map<number, Vec2>();
+  private trails = new Map<number, Vec2[]>();
+  private icons = new Map<string, Landmark[]>();
   fxEnabled = true;
-  /** Background pulse amplitude multiplier (calm mode lowers it). */
   pulseAmp = 1;
   private time0 = 0;
+  private rippleT0 = -1e9;
 
   constructor(
     private gfx: Gfx,
@@ -89,7 +90,6 @@ export class WorldView {
     fieldH: number,
   ) {
     gfx.scene.add(this.bg.mesh);
-    gfx.scene.add(this.walls.group);
     gfx.scene.add(this.glyphs.mesh);
     if (particleMax > 0) {
       this.particles = new Particles(particleMax, fieldW, fieldH);
@@ -107,89 +107,68 @@ export class WorldView {
     this.particles?.setField(data);
   }
 
-  /** Trigger the "become light" transformation (showpiece #1). */
+  /** "Become light" (showpiece #1): particles gather into the hands. */
   transform(): void {
     this.reveal = 0;
     this.revealTarget = 1;
   }
 
-  // ───────────────────────── events ─────────────────────────
-
-  onEvents(events: GameEvent[], now: number, session: GameSession | null): void {
-    const L = this.gfx.layout;
-    for (const e of events) {
-      if (e.type === 'judge') {
-        const w = L.viewToWorld(e.view);
-        if (e.grade === 'miss') {
-          this.effects.push({ kind: 'fall', x: w.x, y: w.y, t0: now, dur: 700, rgb: C.dim, size: 0.05 });
-          if (e.what === 'dodge' && this.fxEnabled) {
-            this.flash.request(now, 0.5);
-            this.shake.kick(0.5);
-            this.effects.push({ kind: 'ring', x: w.x, y: w.y, t0: now, dur: 500, rgb: C.magenta, size: 0.5 });
-          }
-          continue;
-        }
-        const perfect = e.grade === 'perfect';
-        const rgb = perfect ? C.amber : C.cyan;
-        // Hit = 1) hit stop 2) radiate 3) linger (docs/art-direction.md).
-        if (this.fxEnabled) this.hitStopUntil = now + SAFETY.hitStopMs * (perfect ? 1 : 0.6) * Math.max(0.3, this.shake.intensity + 0.4);
-        const big = e.what !== 'orb';
-        this.sparks.burst(w.x, w.y, big ? 64 : perfect ? 36 : 20, big ? 0.9 : perfect ? 0.6 : 0.4, rgb, big ? 1.0 : 0.7, big ? 0.016 : 0.012, e.id);
-        this.effects.push({ kind: 'ring', x: w.x, y: w.y, t0: now, dur: big ? 700 : 450, rgb: perfect ? C.white : C.cyan, size: big ? 0.9 : 0.22 });
-        if (this.fxEnabled) {
-          this.bg.uRipple.value = 0;
-          this.bg.uRippleCenter.value.set(w.x, w.y);
-          this.rippleT0 = now;
-          if (perfect && (big || (session?.score.combo ?? 0) % 10 === 0)) this.flash.request(now, big ? 0.7 : 0.4);
-          this.shake.kick(big ? 0.6 : perfect ? 0.25 : 0.12);
-        }
-      } else if (e.type === 'flowCapture') {
-        const w = L.viewToWorld(e.view);
-        this.sparks.burst(w.x, w.y, Math.min(12, 3 + e.count * 2), 0.35, C.amber, 0.5, 0.01, e.t);
-        this.effects.push({ kind: 'goalPulse', x: w.x, y: w.y, t0: now, dur: 300, rgb: C.amber, size: 0.2 });
-      } else if (e.type === 'section') {
-        if (this.fxEnabled && e.kind === 'finale') this.flash.request(now, 0.6);
-      }
+  /** Hit = 1) hit stop 2) radiate 3) linger (docs/art-direction.md). */
+  burst(view: Vec2, rgb: RGB, strength: number, now: number, seed = 0): void {
+    const w = this.gfx.layout.viewToWorld(view);
+    if (this.fxEnabled) this.hitStopUntil = now + SAFETY.hitStopMs * strength * Math.max(0.3, this.shake.intensity + 0.4);
+    this.sparks.burst(w.x, w.y, Math.round(18 + 46 * strength), 0.35 + 0.6 * strength, rgb, 0.6 + 0.4 * strength, 0.011 + 0.006 * strength, seed);
+    this.effects.push({ kind: 'ring', x: w.x, y: w.y, t0: now, dur: 380 + 320 * strength, rgb: strength > 0.7 ? C.white : rgb, size: 0.15 + 0.6 * strength });
+    if (this.fxEnabled) {
+      this.rippleT0 = now;
+      this.bg.uRippleCenter.value.set(w.x, w.y);
+      if (strength > 0.7) this.flash.request(now, 0.4 * strength);
+      this.shake.kick(0.15 + 0.4 * strength);
     }
   }
-  private rippleT0 = -1e9;
 
-  // ───────────────────────── frame ─────────────────────────
+  fizzle(view: Vec2, now: number): void {
+    const w = this.gfx.layout.viewToWorld(view);
+    this.effects.push({ kind: 'fall', x: w.x, y: w.y, t0: now, dur: 700, rgb: C.dim, size: 0.05 });
+  }
+
+  /** Visual response to raw gesture events (casts flare at the hand). */
+  onGestureEvents(events: GestureEvent[], g: GestureFrame | null, now: number): void {
+    for (const e of events) {
+      if (e.type !== 'cast' || !g) continue;
+      const h = g.hands.find((x) => x.slot === e.hand);
+      if (!h) continue;
+      const at = e.release === 'sigil' && h.stroke.length ? h.stroke[h.stroke.length - 1]! : h.palm;
+      this.burst(at, shapeColor(e.shape), e.release === 'hold' ? 0.35 : 0.6, now, e.t);
+    }
+  }
 
   update(f: WorldFrame): void {
     const L = this.gfx.layout;
     const now = f.now;
     if (this.time0 === 0) this.time0 = now;
     const t = (now - this.time0) / 1000;
-    const hitStop = now < this.hitStopUntil;
-    const visDt = hitStop ? f.dt * 0.08 : f.dt;
+    const visDt = now < this.hitStopUntil ? f.dt * 0.08 : f.dt;
 
-    // Background.
     this.bg.fit(L.sa);
     this.bg.uTime.value = t;
-    const beatPhase = f.beatMs > 0 ? ((f.gameT % f.beatMs) + f.beatMs) % f.beatMs / f.beatMs : 0;
+    const beatPhase = f.beatMs > 0 ? ((((f.beatT % f.beatMs) + f.beatMs) % f.beatMs) / f.beatMs) : 0;
     this.bg.uBeat.value = beatPhase;
-    this.bg.uPulseAmp.value = this.pulseAmp * (f.showGame ? 1 : 0.4);
+    this.bg.uPulseAmp.value = this.pulseAmp * (f.energy > 0.5 ? 1 : 0.4);
     this.bg.uIntensity.value = 0.5 + f.energy * 0.7;
     this.bg.uFlash.value = this.flash.value(now);
     this.bg.uRipple.value = clamp((now - this.rippleT0) / 900, 0, 1);
-    const sec = f.session?.section;
-    const warmTarget = sec === 'flow' ? 0.8 : sec === 'finale' ? 0.35 : 0;
-    this.bg.uWarm.value += (warmTarget - this.bg.uWarm.value) * Math.min(1, f.dt * 2);
+    this.bg.uWarm.value += ((f.energy >= 1 ? 0.35 : 0) - this.bg.uWarm.value) * Math.min(1, f.dt * 2);
 
-    // Camera shake.
     const sh = this.fxEnabled ? this.shake.offset(now) : { x: 0, y: 0 };
     this.gfx.camera.position.set(sh.x, sh.y, 5);
 
-    // Presence & transformation reveal.
-    const present = !!f.body?.present;
-    if (present) this.presentSince ??= now;
-    else this.presentSince = null;
+    const hands = f.gesture?.hands ?? [];
+    const present = hands.length > 0 || (f.ghost?.length ?? 0) > 0;
     if (present && this.revealTarget === 0) this.transform();
-    if (!present && this.presentSince === null) this.revealTarget = 0;
-    this.reveal += (this.revealTarget - this.reveal) * Math.min(1, f.dt * (this.revealTarget > this.reveal ? 1.6 : 0.8));
+    if (!present) this.revealTarget = 0;
+    this.reveal += (this.revealTarget - this.reveal) * Math.min(1, f.dt * (this.revealTarget > this.reveal ? 2.2 : 0.8));
 
-    // Particles.
     if (this.particles) {
       const P = this.particles;
       P.sprite.visible = f.particles;
@@ -199,186 +178,129 @@ export class WorldView {
       P.uPresent.value = present ? 1 : 0;
       P.uReveal.value = ease.outCubic(this.reveal);
       P.uWarm.value = this.bg.uWarm.value;
-      const flow = f.session?.flow;
-      if (flow && f.showGame && f.gameT < flow.phase.end + 1500) {
-        P.uFlowOn.value = 1;
-        const e = L.viewToWorld(flow.emitterView);
-        const g = L.viewToWorld(flow.goalView);
-        P.uEmitter.value.set(e.x, e.y);
-        P.uGoal.value.set(g.x, g.y);
-        P.uEmitDir.value.set(flow.phase.emitDir.x, -flow.phase.emitDir.y);
-      } else P.uFlowOn.value = 0;
-      if (present && f.body) {
-        const kps = KEYPOINT_IDX.map((i) => {
-          const p = f.body!.lm[i];
-          return p && p.v > 0.3 ? L.viewToWorld(p) : L.viewToWorld(f.body!.anchor);
-        });
+      P.uFlowOn.value = 0;
+      const src: Landmark[][] = hands.length ? hands.map((h) => h.lm) : (f.ghost ?? []).map((g) => buildHand(g));
+      if (src.length) {
+        const kps: Vec2[] = [];
+        for (let i = 0; i < KEYPOINTS.length; i++) kps.push(L.viewToWorld(src[i % src.length]![KEYPOINTS[i]!]!));
         P.setKeypoints(kps);
       }
       if (f.particles) P.update(this.gfx.renderer, visDt, t);
     }
 
-    // Glyphs.
     const g = this.glyphs;
     g.uTime.value = t;
     g.begin();
-    const beatPulse = Math.exp(-beatPhase * 6);
-
-    if (f.body?.present) this.drawBody(f.body, f.skeleton, f.particles, now, 1 - (f.bodyDim ?? 0));
-    if (f.showGame && f.session) this.drawGame(f, beatPulse);
-    else this.walls.hideAll();
-    if (f.calib && f.body?.present) this.drawCalib(f.calib, f.body);
-
+    const k = 1 - (f.dim ?? 0);
+    if (f.ghost) for (const gh of f.ghost) this.drawSkeleton(buildHand(gh), C.ghost, 0.55 * (0.75 + 0.25 * Math.sin(now / 300)), 0.007);
+    const seen = new Set<number>();
+    for (const h of hands) {
+      seen.add(h.slot);
+      this.drawHand(h, f, now, k);
+    }
+    for (const slot of [...this.trails.keys()]) if (!seen.has(slot)) this.trails.delete(slot);
+    if (f.calib) this.drawCalib(f.calib, hands[0]?.palm ?? { x: 0.5, y: 0.55 }, hands[0]?.size ?? 0.15);
     this.sparks.update(visDt);
     this.sparks.draw(g);
     this.drawEffects(now);
     g.end();
   }
 
-  private drawBody(b: BodySnapshot, skeleton: boolean, particles: boolean, now: number, k: number): void {
+  private drawSkeleton(lm: Landmark[], rgb: RGB, intensity: number, width: number): void {
     const L = this.gfx.layout;
-    const g = this.glyphs;
-    const reveal = this.reveal;
-    // Light-line skeleton: bright when it is the only silhouette, faint under particles.
-    const lineI = (skeleton ? (particles ? 0.25 + (1 - reveal) * 0.7 : 0.95) : 0) * k;
-    if (lineI > 0) {
-      for (const [a, c] of BONES) {
-        const p = b.lm[a];
-        const q = b.lm[c];
-        if (!p || !q || p.v < 0.35 || q.v < 0.35) continue;
-        const pa = L.viewToWorld(p);
-        const pb = L.viewToWorld(q);
-        g.line(pa.x, pa.y, pb.x, pb.y, 0.006 * L.k, C.cyan, lineI);
-      }
-      const nose = b.lm[LM.nose];
-      if (nose && nose.v > 0.35) {
-        const w = L.viewToWorld(nose);
-        const r = b.anchor.unit * 0.55 * L.k;
-        g.add(Shape.Ring, w.x, w.y, r * 2, r * 2, 0, C.cyan, lineI * 0.8, 0.8, 30);
-      }
-    }
-    // Hand glows at predicted positions (latency compensated display).
-    for (const h of ['L', 'R'] as const) {
-      const p = L.viewToWorld(b.handsPred[h]);
-      const r = JUDGE.handRadius * b.anchor.unit * L.k * 2.2;
-      const rgb = h === 'L' ? C.cyan : C.magenta;
-      const pulse = 0.85 + 0.15 * Math.sin(now / 160 + (h === 'L' ? 0 : 1.5));
-      g.add(Shape.Disk, p.x, p.y, r, r, 0, rgb, 0.7 * pulse * Math.max(k, 0.5));
-      g.add(Shape.Disk, p.x, p.y, r * 0.35, r * 0.35, 0, C.white, 0.9 * Math.max(k, 0.5));
+    for (const [a, b] of HAND_BONES) {
+      const p = L.viewToWorld(lm[a]!);
+      const q = L.viewToWorld(lm[b]!);
+      this.glyphs.line(p.x, p.y, q.x, q.y, width * L.k, rgb, intensity);
     }
   }
 
-  private drawGame(f: WorldFrame, beatPulse: number): void {
+  private drawHand(h: GestureHand, f: WorldFrame, now: number, k: number): void {
     const L = this.gfx.layout;
     const g = this.glyphs;
-    const s = f.session!;
-    const tg = f.gameT;
+    const stanceRgb = h.stance ? shapeColor(h.stance) : C.cyan;
+    const lineI = (f.particles ? 0.3 + (1 - this.reveal) * 0.6 : 0.9) * k;
+    this.drawSkeleton(h.lm, h.stance ? stanceRgb : C.cyan, lineI, 0.0045);
 
-    // Orbs: core + target outline + shrinking approach ring.
-    for (const o of s.orbs) {
-      const w = L.viewToWorld(o.view);
-      this.lastEventOrbView.set(o.note.id, o.view);
-      const r = L.len(o.radius);
-      const prog = clamp((tg - o.spawnT) / o.approachMs, 0, 1.2);
-      const appear = ease.outBack(clamp((tg - o.spawnT) / 260, 0, 1));
-      const quad = r * 2 * 3.4 * appear;
-      const c = 1 / 3.4;
-      const ringR = 1 - (1 - c) * ease.inOutSine(Math.min(prog, 1));
-      const rgb = o.note.side === 'L' ? C.cyan : o.note.side === 'R' ? C.magenta : C.amber;
-      const intensity = 0.9 + 0.25 * beatPulse + (prog > 0.85 ? 0.5 : 0);
-      g.add(Shape.Orb, w.x, w.y, quad, quad, 0, rgb, intensity, c * (1 + 0.06 * beatPulse), ringR, clamp(prog * 2, 0, 1) * 1.2);
+    // Fingertip light trail.
+    const tip = L.viewToWorld(h.tipPred);
+    let tr = this.trails.get(h.slot);
+    if (!tr) this.trails.set(h.slot, (tr = []));
+    tr.push(tip);
+    if (tr.length > TRAIL) tr.shift();
+    for (let i = 1; i < tr.length; i++) {
+      const a = tr[i - 1]!;
+      const b = tr[i]!;
+      const u = i / tr.length;
+      g.line(a.x, a.y, b.x, b.y, 0.006 * u * L.k, C.cyan, 0.9 * u * k);
     }
+    const r = 0.03 * L.k;
+    g.add(Shape.Disk, tip.x, tip.y, r, r, 0, C.white, 1.1 * k);
 
-    // Walls.
-    const seen = new Set<number>();
-    for (const wall of s.walls) {
-      seen.add(wall.note.id);
-      const slot = this.walls.slot(wall.note.id, () => [POSES[wall.note.pose], wall.anchor, L.ca, s.stage.seated]);
-      if (!slot) continue;
-      const prog = clamp((tg - wall.spawnT) / wall.approachMs, 0, 1);
-      const e = ease.inCubic(prog);
-      const a = L.viewToWorld(wall.anchor);
-      const scale = 0.25 + 0.75 * e;
-      const W = L.ca * L.k;
-      const H = L.k;
-      slot.mesh.visible = true;
-      slot.mesh.scale.set(W * scale, H * scale, 1);
-      // Scale about the player's anchor so the hole lands on them.
-      slot.mesh.position.set(a.x * (1 - scale), a.y * (1 - scale), 0);
-      slot.uProg.value = e;
-      slot.uAlpha.value = clamp(prog * 1.5, 0, 1) * (tg > wall.note.t ? clamp(1 - (tg - wall.note.t) / 300, 0, 1) : 1);
-      const target = wall.current ? clamp((wall.current.score - 0.5) / (POSE.passThreshold - 0.5), 0, 1) : 0;
-      slot.uMatch.value += (target - slot.uMatch.value) * Math.min(1, f.dt * 8);
-      slot.uTime.value = tg / 1000;
-    }
-    for (const sl of this.walls.active) if (!seen.has(sl.id)) this.walls.release(sl.id);
-
-    // Dodges: danger bands (magenta chevrons).
-    for (const d of s.dodges) {
-      const prog = clamp((tg - d.spawnT) / d.approachMs, 0, 1.2);
-      const e = ease.inOutSine(Math.min(1, prog));
-      const b = f.body?.present ? f.body : null;
-      const a = d.anchor;
-      const unit = a.unit;
-      const alpha = clamp(prog * 1.4, 0, 1) * (tg > d.note.t + DODGE.windowAfterMs ? 0 : 1);
-      if (alpha <= 0) continue;
-      const thick = (0.03 + 0.07 * e) * L.k;
-      if (d.note.kind === 'jump') {
-        const ankleY = b ? Math.max(b.lm[LM.leftAnkle]?.y ?? 0.9, b.lm[LM.rightAnkle]?.y ?? 0.9) : a.y + unit * 3.4;
-        const w = L.viewToWorld({ x: 0.5, y: ankleY - 0.01 });
-        g.add(Shape.Band, w.x, w.y, L.sa * (0.4 + 0.6 * e), thick, 0, C.magenta, alpha * 1.2, 10, 1.4);
-      } else if (d.note.kind === 'crouch' || d.note.kind === 'duck') {
-        const headY = b ? (b.lm[LM.nose]?.y ?? a.y - unit) : a.y - unit;
-        const w = L.viewToWorld({ x: 0.5, y: headY - 0.02 });
-        g.add(Shape.Band, w.x, w.y, L.sa * (0.4 + 0.6 * e), thick * 1.6, 0, C.magenta, alpha * 1.2, 10, 1.4);
-      } else {
-        // leanL = beam on the player's right → lean left (and vice versa).
-        const side = d.note.kind === 'leanL' ? 1 : -1;
-        const cx = a.x + (side * (0.45 * unit + 1.6 * unit)) / L.ca;
-        const w = L.viewToWorld({ x: cx, y: 0.5 });
-        const width = (2.6 * unit * L.k) * (0.4 + 0.6 * e);
-        g.add(Shape.Band, w.x, w.y, L.k * 1.05, width, Math.PI / 2, C.magenta, alpha * 0.9, 8, 1.2 * side);
+    // Sigil stroke being drawn.
+    if (h.stroke.length > 1) {
+      for (let i = 1; i < h.stroke.length; i++) {
+        const a = L.viewToWorld(h.stroke[i - 1]!);
+        const b = L.viewToWorld(h.stroke[i]!);
+        g.line(a.x, a.y, b.x, b.y, 0.007 * L.k, C.amber, 1.2 * k);
       }
     }
 
-    // Flow: emitter + goal ring.
-    if (s.flow && tg < s.flow.phase.end + 1500) {
-      const e = L.viewToWorld(s.flow.emitterView);
-      const gl = L.viewToWorld(s.flow.goalView);
-      const on = tg >= s.flow.phase.start && tg < s.flow.phase.end;
-      const fade = on ? 1 : clamp(1 - (tg - s.flow.phase.end) / 1500, 0, 1);
-      g.add(Shape.Disk, e.x, e.y, 0.12, 0.12, 0, C.amber, 1.2 * fade);
-      const gr = 0.09 * 2 * 2.2 * L.k;
-      g.add(Shape.Ring, gl.x, gl.y, gr, gr, 0, C.amber, (1.2 + 0.4 * beatPulse) * fade, 1 / 2.2, 30);
-      g.add(Shape.Disk, gl.x, gl.y, gr * 0.5, gr * 0.5, 0, C.amber, 0.35 * fade);
+    // Stance: charge ring around the palm + the recognised shape icon above the hand.
+    const palm = L.viewToWorld(h.palm);
+    const pr = h.size * L.k * 1.25;
+    if (h.stance) {
+      // Charge: the ring contracts onto the palm as the stance charges.
+      const ch = ease.outCubic(h.charge);
+      const rr = pr * (2.4 - 0.9 * ch);
+      g.add(Shape.Ring, palm.x, palm.y, rr, rr, 0, stanceRgb, (0.25 + 0.5 * ch) * k * (h.state === 'spent' ? 0.4 : 1), 0.94, 45);
+      if (f.icons) this.drawIcon(h.stance, { x: h.palm.x, y: h.palm.y - h.size * 2.6 }, h.size * 0.55, stanceRgb, 1.1 * k);
+    } else if (f.icons && h.decision.best && h.decision.bestConf > 0.4) {
+      // "Almost there": a faint, flickering icon of the nearest shape.
+      const a = (h.decision.bestConf - 0.4) / 0.3;
+      this.drawIcon(h.decision.best, { x: h.palm.x, y: h.palm.y - h.size * 2.6 }, h.size * 0.55, C.ghost, a * (0.6 + 0.4 * Math.sin(now / 90)) * k);
     }
   }
 
-  private drawCalib(c: CalibVisual, b: BodySnapshot): void {
+  /** Small glowing skeleton of a shape (icon), centred at `at` (view), size in view-height units. */
+  drawIcon(shape: ShapeId, at: Vec2, size: number, rgb: RGB, intensity: number): void {
+    if (intensity <= 0.01) return;
+    let lm = this.icons.get(shape);
+    if (!lm) {
+      lm = buildHand(withShape({ ...defaultHand('R'), wrist: { x: 0, y: 0 }, size: 1 }, shape));
+      this.icons.set(shape, lm);
+    }
+    const L = this.gfx.layout;
+    const pts = lm.map((p) => L.viewToWorld({ x: at.x + p.x * size * 0.9, y: at.y + (p.y + 1.1) * size * 0.9 }));
+    for (const [a, b] of HAND_BONES) this.glyphs.line(pts[a]!.x, pts[a]!.y, pts[b]!.x, pts[b]!.y, 0.004 * L.k, rgb, intensity);
+    const c = L.viewToWorld({ x: at.x, y: at.y });
+    const rr = size * 1.9 * L.k;
+    this.glyphs.add(Shape.Ring, c.x, c.y, rr, rr, 0, rgb, intensity * 0.5, 0.95, 40);
+  }
+
+  private drawCalib(c: CalibVisual, centre: Vec2, size: number): void {
     const L = this.gfx.layout;
     const g = this.glyphs;
-    // Two lights converge in front of the chest on each pulse → clap.
-    const chest = L.viewToWorld({ x: b.anchor.x, y: b.anchor.y + b.anchor.unit * 0.9 });
-    const unitW = b.anchor.unit * L.k;
+    const ch = L.viewToWorld(centre);
+    const unit = size * 1.8 * L.k;
     for (const p of c.pulses) {
       const u = (c.now - (p - c.intervalMs)) / c.intervalMs;
       if (u < 0 || u > 1.25) continue;
-      const k = ease.inCubic(clamp(u, 0, 1));
-      const spread = (1 - k) * unitW * 2.2;
+      const kk = ease.inCubic(clamp(u, 0, 1));
+      const spread = (1 - kk) * unit * 2.4;
       const a = u <= 1 ? 1 : clamp(1 - (u - 1) * 4, 0, 1);
-      g.add(Shape.Disk, chest.x - spread, chest.y, unitW * 0.7, unitW * 0.7, 0, C.cyan, 1.1 * a);
-      g.add(Shape.Disk, chest.x + spread, chest.y, unitW * 0.7, unitW * 0.7, 0, C.magenta, 1.1 * a);
+      g.add(Shape.Disk, ch.x - spread, ch.y, unit * 0.5, unit * 0.5, 0, C.cyan, 1.1 * a);
+      g.add(Shape.Disk, ch.x + spread, ch.y, unit * 0.5, unit * 0.5, 0, C.magenta, 1.1 * a);
       if (u > 0.98 && u < 1.25) {
-        const rr = unitW * (1 + (u - 1) * 8);
-        g.add(Shape.Ring, chest.x, chest.y, rr, rr, 0, C.amber, a * 1.5, 0.85, 25);
+        const rr = unit * (1 + (u - 1) * 8);
+        g.add(Shape.Ring, ch.x, ch.y, rr, rr, 0, C.amber, a * 1.5, 0.85, 25);
       }
     }
-    if (c.lastClap !== null && c.now - c.lastClap < 400) {
-      const k = (c.now - c.lastClap) / 400;
-      const rr = unitW * (0.6 + k * 1.6);
-      g.add(Shape.Ring, chest.x, chest.y, rr, rr, 0, C.white, (1 - k) * 1.4, 0.85, 30);
+    if (c.lastEvent !== null && c.now - c.lastEvent < 400) {
+      const k = (c.now - c.lastEvent) / 400;
+      const rr = unit * (0.6 + k * 1.6);
+      g.add(Shape.Ring, ch.x, ch.y, rr, rr, 0, C.white, (1 - k) * 1.4, 0.85, 30);
     }
-    void LATENCY;
   }
 
   private drawEffects(now: number): void {
@@ -389,11 +311,8 @@ export class WorldView {
       if (e.kind === 'ring') {
         const r = e.size * ease.outExpo(k);
         g.add(Shape.Ring, e.x, e.y, r * 2, r * 2, 0, e.rgb, (1 - k) * 1.6, 0.9, 25);
-      } else if (e.kind === 'fall') {
-        g.add(Shape.Disk, e.x, e.y - k * 0.08, e.size * (1 - k * 0.5), e.size * (1 - k * 0.5), 0, e.rgb, (1 - k) * 0.6);
       } else {
-        const r = e.size * (1 + k * 0.4);
-        g.add(Shape.Ring, e.x, e.y, r, r, 0, e.rgb, (1 - k) * 0.8, 0.8, 20);
+        g.add(Shape.Disk, e.x, e.y - k * 0.08, e.size * (1 - k * 0.5), e.size * (1 - k * 0.5), 0, e.rgb, (1 - k) * 0.6);
       }
     }
   }
@@ -401,7 +320,6 @@ export class WorldView {
   reset(): void {
     this.effects = [];
     this.sparks.clear();
-    this.walls.hideAll();
-    this.lastEventOrbView.clear();
+    this.trails.clear();
   }
 }

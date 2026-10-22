@@ -1,5 +1,5 @@
 // Hands-free buttons: hold a hand over the button for 1 s to select it.
-import { EXHIBIT } from '../config';
+import { HAND } from '../config';
 import type { Vec2 } from '../core/types';
 
 export interface HoldButtonSpec {
@@ -29,11 +29,11 @@ export class HoldButtons {
     this.lastT = now;
     let done: string | null = null;
     for (const b of this.buttons) {
-      const r = b.r ?? EXHIBIT.buttonRadius;
+      const r = b.r ?? HAND.buttonRadius;
       const over = hands.some((h) => Math.hypot((h.x - b.pos.x) * aspect, h.y - b.pos.y) < r);
       const p = this.progress.get(b.id) ?? 0;
       // Fill while hovering, drain twice as fast when leaving (forgiving jitter).
-      const np = over ? Math.min(1, p + dt / EXHIBIT.buttonHoldMs) : Math.max(0, p - (2 * dt) / EXHIBIT.buttonHoldMs);
+      const np = over ? Math.min(1, p + dt / HAND.buttonHoldMs) : Math.max(0, p - (2 * dt) / HAND.buttonHoldMs);
       this.progress.set(b.id, np);
       if (np >= 1 && !this.fired.has(b.id)) {
         this.fired.add(b.id);

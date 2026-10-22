@@ -28,7 +28,7 @@ body.cursor { cursor: crosshair; }
 .privacy b { color: var(--white); font-weight: 600; }
 
 /* Standing guide */
-.guide { position: absolute; left: 50%; top: 50%; height: 78vh; transform: translate(-50%, -46%); transition: transform 500ms cubic-bezier(.2,.7,.2,1), opacity 400ms; }
+.guide { position: absolute; left: 50%; top: 50%; height: 60vh; transform: translate(-50%, -46%); transition: transform 500ms cubic-bezier(.2,.7,.2,1), opacity 400ms; }
 .guide svg { height: 100%; overflow: visible; }
 .guide path, .guide circle.head { fill: none; stroke-width: 3; stroke: var(--cyan); filter: drop-shadow(0 0 6px currentColor); transition: stroke 300ms; }
 .guide.tooClose path, .guide.tooClose circle.head { stroke: var(--magenta); }

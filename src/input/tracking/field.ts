@@ -8,20 +8,13 @@
 //
 // All buffers are allocated once per instance (8h operation: no per-frame
 // allocation except the returned view, which is a reused buffer).
-import { LM, type Landmark } from '../../core/types';
+import { HAND_BONES, HL, type Landmark } from '../../core/types';
 
 export const SDF_RANGE = 0.125; // ± view-height units encoded in R
 export const VEL_RANGE = 4.0; // ± view-height units / s encoded in G/B
 
-const SPLAT_JOINTS = [LM.leftWrist, LM.rightWrist, LM.leftElbow, LM.rightElbow, LM.leftIndex, LM.rightIndex];
-const CAPSULE_BONES: ReadonlyArray<readonly [number, number, number]> = [
-  // [a, b, radius in body-height fraction]
-  [11, 12, 0.07], [11, 13, 0.045], [13, 15, 0.04], [12, 14, 0.045], [14, 16, 0.04],
-  [15, 19, 0.035], [16, 20, 0.035],
-  [11, 23, 0.075], [12, 24, 0.075], [23, 24, 0.07], [11, 24, 0.07], [12, 23, 0.07],
-  [23, 25, 0.06], [25, 27, 0.05], [24, 26, 0.06], [26, 28, 0.05],
-];
-
+/** Fingertips of up to two hands concatenated (21 landmarks each) — velocity splats. */
+export const HAND_SPLATS = [4, 8, 12, 16, 20, 25, 29, 33, 37, 41];
 export class FieldBuilder {
   readonly out: Uint8Array;
   private inside: Float32Array;
@@ -60,26 +53,34 @@ export class FieldBuilder {
     this.velY.fill(0);
   }
 
-  /** Rasterize a soft capsule silhouette from landmarks (no segmentation available). */
-  maskFromLandmarks(lm: Landmark[] | null): Float32Array {
+  /** Rasterize soft capsules for hands (fingers + palm). Hands are 21-landmark arrays. */
+  maskFromHands(hands: Landmark[][]): Float32Array {
     const m = this.capsMask;
     m.fill(0);
-    if (!lm) return m;
-    const { w, h, aspect } = this;
-    const ls = lm[LM.leftShoulder];
-    const rs = lm[LM.rightShoulder];
-    if (!ls || !rs) return m;
-    // Body height estimate from shoulder width (proportions as in skeleton.ts).
-    const H = Math.hypot((ls.x - rs.x) * aspect, ls.y - rs.y) / 0.235;
-    const caps: Array<[number, number, number, number, number]> = [];
-    for (const [a, b, r] of CAPSULE_BONES) {
-      const p = lm[a];
-      const q = lm[b];
-      if (!p || !q || p.v < 0.3 || q.v < 0.3) continue;
-      caps.push([p.x * aspect, p.y, q.x * aspect, q.y, r * H]);
+    const { aspect } = this;
+    for (const lm of hands) {
+      const w = lm[HL.wrist];
+      const mm = lm[HL.middleMcp];
+      if (!w || !mm) continue;
+      const size = Math.hypot((w.x - mm.x) * aspect, w.y - mm.y);
+      const caps: Array<[number, number, number, number, number]> = [];
+      for (const [a, b] of HAND_BONES) {
+        const p = lm[a]!;
+        const q = lm[b]!;
+        const palm = a === 0 || (a === 5 && b === 9) || (a === 9 && b === 13) || (a === 13 && b === 17);
+        caps.push([p.x * aspect, p.y, q.x * aspect, q.y, size * (palm ? 0.2 : 0.1)]);
+      }
+      // Palm centre.
+      const c = lm[HL.middleMcp]!;
+      caps.push([(w.x + c.x) / 2 * aspect, (w.y + c.y) / 2, (w.x + c.x) / 2 * aspect, (w.y + c.y) / 2, size * 0.42]);
+      this.rasterCapsules(caps);
     }
-    const nose = lm[LM.nose];
-    if (nose && nose.v > 0.3) caps.push([nose.x * aspect, nose.y, nose.x * aspect, nose.y + 0.02 * H, 0.06 * H]);
+    return m;
+  }
+
+  private rasterCapsules(caps: Array<[number, number, number, number, number]>): void {
+    const m = this.capsMask;
+    const { w, h, aspect } = this;
     for (const [ax, ay, bx, by, r] of caps) {
       const x0 = Math.max(0, Math.floor(((Math.min(ax, bx) - r) / aspect) * w) - 1);
       const x1 = Math.min(w - 1, Math.ceil(((Math.max(ax, bx) + r) / aspect) * w) + 1);
@@ -101,14 +102,13 @@ export class FieldBuilder {
         }
       }
     }
-    return m;
   }
 
   /**
    * Build the packed field. `mask` must be w*h, view-oriented (mirrored), top row first.
    * `lm` are view-space landmarks of the locked player (for velocity splats).
    */
-  build(mask: Float32Array, lm: Landmark[] | null, tMs: number): Uint8Array {
+  build(mask: Float32Array, lm: Landmark[] | null, tMs: number, splatIdx: readonly number[] = HAND_SPLATS): Uint8Array {
     const { w, h } = this;
     const n = w * h;
     // Binary seeds for the distance transform.
@@ -149,8 +149,8 @@ export class FieldBuilder {
         }
       }
       // Landmark velocity splats (strong, reliable trails behind waving hands).
-      if (lm && this.prevLm) {
-        for (const j of SPLAT_JOINTS) {
+      if (lm && this.prevLm && this.prevLm.length === lm.length) {
+        for (const j of splatIdx) {
           const a = lm[j];
           const b = this.prevLm[j];
           if (!a || !b || a.v < 0.4 || b.v < 0.4) continue;

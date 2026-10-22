@@ -7,7 +7,7 @@ export interface Recording {
   version: 1;
   aspect: number;
   /** Frames with t relative to recording start (ms). */
-  frames: Array<{ t: number; p: number[][]; l?: number }>;
+  frames: Array<{ t: number; p: number[][]; l?: number; h?: Array<{ s: number; p: number[] }> }>;
   meta?: Record<string, unknown>;
 }
 
@@ -19,6 +19,7 @@ export function encodeFrame(f: PoseFrame, t0: number): Recording['frames'][numbe
     p: f.poses.map((pose) => pose.flatMap((l) => [r4(l.x), r4(l.y), r4(l.z), r4(l.v)])),
   };
   if (f.luma !== undefined) out.l = r4(f.luma);
+  if (f.hands?.length) out.h = f.hands.map((h) => ({ s: r4(h.score), p: h.lm.flatMap((l) => [r4(l.x), r4(l.y), r4(l.z), r4(l.v)]) }));
   return out;
 }
 
@@ -30,7 +31,14 @@ export function decodeFrame(fr: Recording['frames'][number], aspect: number, tOf
   });
   const f: PoseFrame = { t: fr.t + tOffset, poses, aspect };
   if (fr.l !== undefined) f.luma = fr.l;
+  if (fr.h) f.hands = fr.h.map((h) => ({ score: h.s, lm: unflat(h.p) }));
   return f;
+}
+
+function unflat(flat: number[]): Landmark[] {
+  const lm: Landmark[] = [];
+  for (let i = 0; i + 3 < flat.length; i += 4) lm.push({ x: flat[i]!, y: flat[i + 1]!, z: flat[i + 2]!, v: flat[i + 3]! });
+  return lm;
 }
 
 export function parseRecording(json: string | unknown): Recording {

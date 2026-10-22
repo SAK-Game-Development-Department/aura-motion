@@ -1,38 +1,43 @@
-// Feature flags for Tier 1 / Tier 2 features. Each feature is independent and
-// must degrade to the Tier 0 experience when off. Override at runtime with
-// ?flags=+wall,-particles  (see docs/operations.md).
+// Feature flags. Every Tier 1/2 feature is independent and must fall back to
+// the Tier 0 experience when off. Override with ?flags=+sigils,-particles.
 export interface Flags {
-  /** T1-1: GPU particle silhouette from segmentation. */
-  particles: boolean;
-  /** T1-2: Flow mini-game (push the particle stream into the goal). */
-  flow: boolean;
-  /** T1-3: Pose walls. */
-  wall: boolean;
-  /** T1-4: Dodge part. */
-  dodge: boolean;
-  /** T1-5: Full stage structure (Intro→Flow→Wall→Dodge→Finale). Off = orbs only. */
+  /** T1-1: all 8 static shapes + motions (off = the 3 core shapes only). */
+  shapes8: boolean;
+  /** T1-1: motion-released techniques (swipe / push / pull / flick). */
+  motions: boolean;
+  /** T1-2: two-hand techniques (join → spread). */
+  twoHand: boolean;
+  /** T1-3: air-drawn sigils. */
+  sigils: boolean;
+  /** T1-4: chained techniques (A → B → C). */
+  chains: boolean;
+  /** T1-5: stage structure Intro → Rush → Guard → Boss (off = Intro only). */
   structure: boolean;
-  /** T1-6: Dynamic difficulty. */
+  /** Dynamic difficulty. */
   dda: boolean;
-  /** T1-7: Hit stop, bursts, background shader, shake. */
+  /** T1-6: hit stop, bursts, technique effects, background shader. */
   fx: boolean;
-  /** Use segmentation (else silhouette is built from skeleton capsules). */
+  /** GPU particle hands. */
+  particles: boolean;
+  /** T1-7 (optional): body silhouette particles from the Image Segmenter. */
   segmentation: boolean;
   /** Run tracking in a Web Worker when possible. */
   worker: boolean;
-  /** T2: QR result card. */
+  /** T2: take-home QR result card. */
   qr: boolean;
 }
 
 export const DEFAULT_FLAGS: Flags = {
-  particles: true,
-  flow: true,
-  wall: true,
-  dodge: true,
+  shapes8: true,
+  motions: true,
+  twoHand: true,
+  sigils: true,
+  chains: true,
   structure: true,
   dda: true,
   fx: true,
-  segmentation: true,
+  particles: true,
+  segmentation: false,
   worker: true,
   qr: false,
 };

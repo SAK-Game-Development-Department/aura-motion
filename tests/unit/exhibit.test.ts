@@ -6,9 +6,9 @@ import { HighScores, type KV } from '../../src/exhibit/highscores';
 import { nickname } from '../../src/exhibit/nickname';
 import { PresenceTracker, judgePlacement } from '../../src/exhibit/presence';
 import { Watchdog, canReload } from '../../src/exhibit/watchdog';
-import { BodyTracker } from '../../src/input/body';
-import { buildLandmarks, defaultBody } from '../../src/input/skeleton';
-import { SAFETY, EXHIBIT, RENDER } from '../../src/config';
+import { HandTracker } from '../../src/gesture/tracker';
+import { buildHand, defaultHand } from '../../src/gesture/handModel';
+import { SAFETY, EXHIBIT, RENDER, HAND } from '../../src/config';
 import { FieldBuilder, chamfer } from '../../src/input/tracking/field';
 
 describe('FlashLimiter (photosensitivity)', () => {
@@ -74,7 +74,7 @@ describe('HoldButtons', () => {
     for (let t = 416; t <= 1200; t += 16) fired = hb.update(t, [{ x: 0.1, y: 0.1 }], 16 / 9) ?? fired;
     expect(fired).toBeNull();
     let count = 0;
-    for (let t = 1216; t <= 1216 + EXHIBIT.buttonHoldMs + 600; t += 16) if (hb.update(t, [{ x: 0.51, y: 0.5 }], 16 / 9)) count++;
+    for (let t = 1216; t <= 1216 + HAND.buttonHoldMs + 600; t += 16) if (hb.update(t, [{ x: 0.51, y: 0.5 }], 16 / 9)) count++;
     expect(count).toBe(1);
   });
 });
@@ -103,35 +103,25 @@ describe('HighScores & nickname', () => {
   });
 });
 
-describe('Presence', () => {
-  const snap = (mod: (b: ReturnType<typeof defaultBody>) => void) => {
-    const b = defaultBody();
-    mod(b);
-    return new BodyTracker().update({ t: 0, poses: [buildLandmarks(b)], aspect: 16 / 9 });
-  };
-  it('judges placement', () => {
-    expect(judgePlacement(snap(() => {})).placement).toBe('ok');
-    expect(judgePlacement(snap((b) => (b.height = 0.4))).placement).toBe('tooFar');
-    expect(judgePlacement(snap((b) => ((b.height = 1.1), (b.floorY = 1.05))), { preferStanding: true }).placement).toBe('tooClose');
-    expect(judgePlacement(snap((b) => (b.seated = true)), { preferStanding: true }).placement).toBe('tooClose');
-    expect(judgePlacement(snap((b) => (b.seated = true)), { preferStanding: true, forceSeated: true }).placement).toBe('ok');
-    expect(judgePlacement(snap((b) => (b.cx = 0.85))).placement).toBe('offCenter');
-    expect(judgePlacement(null).placement).toBe('none');
-    const seated = judgePlacement(snap((b) => (b.seated = true)));
-    expect(seated.seated).toBe(true);
-    expect(seated.placement).toBe('ok');
+describe('Presence (hands)', () => {
+  const frame = (size: number | null) =>
+    new HandTracker().update({ t: 0, poses: [], aspect: 16 / 9, hands: size === null ? [] : [{ lm: buildHand({ ...defaultHand('R'), size }), score: 1 }] });
+  it('judges placement by hand size', () => {
+    expect(judgePlacement(frame(0.15))).toBe('ok');
+    expect(judgePlacement(frame(0.04))).toBe('tooFar');
+    expect(judgePlacement(frame(0.45))).toBe('tooClose');
+    expect(judgePlacement(frame(null))).toBe('none');
+    expect(judgePlacement(null)).toBe('none');
   });
-  it('ready after 1.5 s in position; empty after 10 s absent', () => {
+  it('ready after the hold; empty after the absence timeout', () => {
     const p = new PresenceTracker();
-    const b = snap(() => {});
-    for (let t = 0; t < 1400; t += 33) p.update(t, b, 'ok');
-    expect(p.ready(1400)).toBe(false);
-    p.update(1550, b, 'ok');
-    expect(p.ready(1550)).toBe(true);
-    const gone = { ...b, present: false };
-    p.update(2000, gone, 'none');
-    expect(p.empty(2000 + EXHIBIT.absentReturnMs - 600)).toBe(false);
-    expect(p.empty(1550 + EXHIBIT.absentReturnMs + 1)).toBe(true);
+    for (let t = 0; t < HAND.startHoldMs - 100; t += 33) p.update(t, true, 'ok');
+    expect(p.ready(HAND.startHoldMs - 100)).toBe(false);
+    p.update(HAND.startHoldMs + 50, true, 'ok');
+    expect(p.ready(HAND.startHoldMs + 50)).toBe(true);
+    p.update(2000, false, 'none');
+    expect(p.empty(HAND.startHoldMs + 50 + EXHIBIT.absentReturnMs - 600)).toBe(false);
+    expect(p.empty(HAND.startHoldMs + 50 + EXHIBIT.absentReturnMs + 1)).toBe(true);
   });
 });
 
@@ -185,14 +175,13 @@ describe('Silhouette field', () => {
     const [vx] = fb.velAt(39, 18); // leading edge
     expect(vx).toBeGreaterThan(0.1);
   });
-  it('capsule mask from landmarks covers the torso and not the corners', () => {
+  it('hand capsule mask covers the palm and fingertips, not the corners', () => {
     const fb = new FieldBuilder(192, 108);
-    const lm = buildLandmarks(defaultBody());
-    const m = fb.maskFromLandmarks(lm);
+    const lm = buildHand({ ...defaultHand('R'), size: 0.2, wrist: { x: 0.5, y: 0.8 } });
+    const m = fb.maskFromHands([lm]);
     const at = (x: number, y: number) => m[Math.floor(y * 108) * 192 + Math.floor(x * 192)]!;
-    const sh = lm[11]!;
-    const hip = lm[23]!;
-    expect(at((sh.x + lm[12]!.x) / 2, (sh.y + hip.y) / 2)).toBeGreaterThan(0.9);
+    expect(at((lm[0]!.x + lm[9]!.x) / 2, (lm[0]!.y + lm[9]!.y) / 2)).toBeGreaterThan(0.9);
+    expect(at(lm[8]!.x, lm[8]!.y)).toBeGreaterThan(0.3);
     expect(at(0.02, 0.02)).toBe(0);
   });
 });

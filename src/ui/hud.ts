@@ -3,7 +3,6 @@
 import type { Placement } from '../exhibit/presence';
 import type { Grade } from '../game/score';
 import type { ScoreEntry } from '../exhibit/highscores';
-import type { SectionKind } from '../stage/types';
 
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
@@ -14,13 +13,16 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): 
 
 export type Screen = 'loading' | 'title' | 'calibrate' | 'play' | 'results' | 'error';
 
-const SECTION_ICON: Record<SectionKind, string> = { intro: '●', flow: '≈', wall: '⌂', dodge: '⇅', finale: '✦' };
-const SECTION_NAME: Record<SectionKind, string> = { intro: 'ふれる', flow: 'ながれ', wall: 'かたち', dodge: 'よける', finale: 'フィナーレ' };
+const SECTION_ICON: Record<string, string> = { intro: '●', flow: '≈', wall: '⌂', dodge: '⇅', finale: '✦', tap: '●', trace: '〰', shape: '✋', pinch: '◉' };
+const SECTION_NAME: Record<string, string> = {
+  intro: 'ふれる', flow: 'ながれ', wall: 'かたち', dodge: 'よける', finale: 'フィナーレ',
+  tap: 'タッチ', trace: 'なぞる', shape: 'てのかたち', pinch: 'つまむ',
+};
 
+// Open-hand outline (palm toward the camera) for the placement guide.
 const GUIDE_SVG = `
-<svg viewBox="0 0 100 220" xmlns="http://www.w3.org/2000/svg">
-  <circle class="head" cx="50" cy="20" r="13"/>
-  <path d="M28 44 Q50 36 72 44 L78 98 M28 44 L22 98 M34 46 L36 118 L32 210 M66 46 L64 118 L68 210 M36 118 L64 118"/>
+<svg viewBox="0 0 120 160" xmlns="http://www.w3.org/2000/svg">
+  <path d="M38 150 C30 128 26 112 24 98 L14 66 C12 58 22 54 26 62 L36 86 L36 30 C36 22 47 22 47 30 L48 74 L50 18 C50 10 62 10 62 18 L62 72 L66 24 C66 16 78 16 78 24 L76 76 L84 40 C86 32 97 34 95 42 L88 98 C86 122 80 138 76 150 Z"/>
 </svg>`;
 
 export class Hud {
@@ -50,7 +52,7 @@ export class Hud {
   private screen: Screen | null = null;
   private lastScore = -1;
   private lastCombo = -1;
-  private sectionKinds: SectionKind[] = [];
+  private sectionKinds: string[] = [];
 
   constructor(parent: HTMLElement) {
     this.root = h('div');
@@ -82,7 +84,7 @@ export class Hud {
     this.layers.title.appendChild(h('div', 'logo', 'AURA'));
     this.guide = h('div', 'guide', GUIDE_SVG);
     this.layers.title.appendChild(this.guide);
-    this.callEl = h('div', 'call glow-c', 'カメラのまえに たってね');
+    this.callEl = h('div', 'call glow-c', 'カメラに てを かざしてね');
     this.hintEl = h('div', 'hint glow-a', '');
     this.layers.title.append(this.callEl, this.hintEl);
     const svg = this.guide.querySelector('svg');
@@ -90,7 +92,7 @@ export class Hud {
       // Progress stroke that fills while holding position.
       const ns = 'http://www.w3.org/2000/svg';
       const fill = document.createElementNS(ns, 'path');
-      fill.setAttribute('d', 'M50 7 A13 13 0 1 1 49.9 7');
+      fill.setAttribute('d', 'M60 88 A20 20 0 1 1 59.9 88');
       fill.setAttribute('class', 'fill');
       fill.setAttribute('pathLength', '1');
       fill.style.strokeDasharray = '1';
@@ -100,7 +102,7 @@ export class Hud {
     }
 
     // Calibration
-    this.calibText = h('div', 'calib-text glow-a', 'ひかりが あわさったら てを たたいて');
+    this.calibText = h('div', 'calib-text glow-a', 'てを ひらいて');
     this.calibDots = h('div', 'calib-dots');
     this.layers.calibrate.append(this.calibText, this.calibDots);
 
@@ -151,7 +153,7 @@ export class Hud {
   }
 
   // ── title ──
-  setTitle(opts: { attract: boolean; placement: Placement; progress: number; seated: boolean; waitingNext?: boolean }): void {
+  setTitle(opts: { attract: boolean; placement: Placement; progress: number; waitingNext?: boolean }): void {
     const { attract, placement, progress } = opts;
     if (opts.waitingNext) {
       this.guide.style.opacity = '0';
@@ -163,9 +165,8 @@ export class Hud {
     this.guide.classList.toggle('tooClose', placement === 'tooClose');
     this.guide.classList.toggle('tooFar', placement === 'tooFar');
     if (this.guideFill) this.guideFill.style.strokeDashoffset = String(1 - progress);
-    this.callEl.textContent = attract || placement === 'none' ? 'カメラのまえに たってね' : placement === 'ok' ? (progress > 0 ? 'そのまま…' : 'そのまま まってね') : '';
-    this.hintEl.textContent =
-      placement === 'tooClose' ? (opts.seated ? 'すこし さがってね' : 'うしろに さがってね') : placement === 'tooFar' ? 'もうすこし ちかくに' : placement === 'offCenter' ? 'まんなかに きてね' : '';
+    this.callEl.textContent = attract || placement === 'none' ? 'カメラに てを かざしてね' : placement === 'ok' ? (progress > 0 ? 'そのまま…' : 'そのまま まってね') : '';
+    this.hintEl.textContent = placement === 'tooClose' ? 'すこし てを はなしてね' : placement === 'tooFar' ? 'もうすこし ちかくに' : '';
     this.hintEl.className = `hint ${placement === 'tooClose' ? 'glow-m' : 'glow-a'}`;
   }
 
@@ -205,27 +206,42 @@ export class Hud {
   }
 
   // ── play ──
-  setSections(kinds: SectionKind[]): void {
+  setSections(kinds: string[]): void {
     this.sectionKinds = kinds;
     this.sectionsEl.innerHTML = '';
     for (const k of kinds) {
-      const s = h('span', '', SECTION_ICON[k]);
-      s.title = SECTION_NAME[k];
+      const s = h('span', '', SECTION_ICON[k] ?? '●');
+      s.title = SECTION_NAME[k] ?? k;
       this.sectionsEl.appendChild(s);
     }
   }
 
-  setSection(idx: number, kind: SectionKind, announce: boolean): void {
+  setSection(idx: number, kind: string, announce: boolean): void {
     Array.from(this.sectionsEl.children).forEach((c, i) => {
       c.classList.toggle('now', i === idx);
       c.classList.toggle('done', i < idx);
     });
     if (announce && this.sectionKinds.length > 1) {
-      this.bannerEl.textContent = SECTION_NAME[kind];
+      this.bannerEl.textContent = SECTION_NAME[kind] ?? kind;
       this.bannerEl.classList.remove('show');
       void this.bannerEl.offsetWidth;
       this.bannerEl.classList.add('show');
     }
+  }
+
+  /** Show/hide the battle score & combo (hidden in practice). */
+  setScoreVisible(on: boolean): void {
+    this.scoreEl.style.display = on ? '' : 'none';
+    this.comboEl.style.display = on ? '' : 'none';
+    this.timeEl.parentElement!.style.display = on ? '' : 'none';
+  }
+
+  /** Big transient label (technique name etc.). */
+  announce(text: string): void {
+    this.bannerEl.textContent = text;
+    this.bannerEl.classList.remove('show');
+    void this.bannerEl.offsetWidth;
+    this.bannerEl.classList.add('show');
   }
 
   setPlay(score: number, combo: number, mul: number, progress: number): void {
