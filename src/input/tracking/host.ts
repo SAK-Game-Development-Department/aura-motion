@@ -110,10 +110,18 @@ class InlineHost implements TrackerHost {
   }
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+/**
+ * Inactivity timeout: fails only if `ms` pass without progress (a slow first
+ * download of the ~20 MB model + WASM must not count as a hang).
+ */
+function withIdleTimeout<T>(start: (onProgress: () => void) => Promise<T>, ms: number, what: string): Promise<T> {
   return new Promise((res, rej) => {
-    const id = setTimeout(() => rej(new Error(`${what} timed out after ${ms} ms`)), ms);
-    p.then(
+    let id = setTimeout(() => rej(new Error(`${what} timed out (no progress for ${ms} ms)`)), ms);
+    const bump = () => {
+      clearTimeout(id);
+      id = setTimeout(() => rej(new Error(`${what} timed out (no progress for ${ms} ms)`)), ms);
+    };
+    start(bump).then(
       (v) => {
         clearTimeout(id);
         res(v);
@@ -146,7 +154,15 @@ export async function createTrackerHost(
     const t0 = performance.now();
     const host = mode === 'worker' ? new WorkerHost() : new InlineHost();
     try {
-      await withTimeout(host.init({ ...cfg, type: 'init', delegate }, opts.onProgress), opts.timeoutMs, `${mode}/${delegate}`);
+      await withIdleTimeout(
+        (bump) =>
+          host.init({ ...cfg, type: 'init', delegate }, (stage, loaded, total) => {
+            bump();
+            opts.onProgress(stage, loaded, total);
+          }),
+        opts.timeoutMs,
+        `${mode}/${delegate}`,
+      );
       attempts.push({ mode, delegate, ok: true, ms: performance.now() - t0 });
       return { host, attempts };
     } catch (e) {

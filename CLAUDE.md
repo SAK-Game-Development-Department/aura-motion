@@ -11,7 +11,7 @@
 | 目的 | コマンド |
 |---|---|
 | 開発サーバー（展示アプリ） | `npm run dev`（http://localhost:5173 。localhost は secure context なのでカメラが使える） |
-| ジェスチャーラボ（開発者ツール） | `npm run lab`（http://localhost:5174）／`npm run deploy:lab`（→ https://aura-lab.pages.dev） |
+| ジェスチャーラボ（開発者ツール） | `npm run lab`（http://localhost:5174）／`npm run deploy:lab`（→ https://aura-lab-csq.pages.dev） |
 | 型チェック / lint / テスト | `npm run typecheck` / `npm run lint` / `npm run test` |
 | 認識の評価レポート | `npm run gesture-eval` → `docs/gesture-eval.md`（合成データ） |
 | E2E | `npm run e2e`（ビルド後の preview に対して。ヘッドレスでも WebGPU(SwiftShader)/WebGL2 が動く） |

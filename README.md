@@ -26,7 +26,7 @@ npm run check:all    # 型チェック・lint・テスト・ビルド・E2E を�
 
 ## 公開中の URL
 - 展示アプリ: **https://aura-motion.pages.dev/** （Chrome / Edge で開き、カメラを許可する。観客向けの画面は `/audience`）
-- ジェスチャーラボ（開発者ツール）: **https://aura-lab.pages.dev/** （認識の確認・ランドマークの記録・混同行列）
+- ジェスチャーラボ（開発者ツール）: **https://aura-lab-csq.pages.dev/** （認識の確認・ランドマークの記録・混同行列）
 
 ## デプロイ（Cloudflare Pages、無料）
 ### A. GitHub 連携（推奨）
