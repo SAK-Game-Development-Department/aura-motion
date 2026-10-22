@@ -67,6 +67,8 @@ export function shapeColor(s: ShapeId): RGB {
   return s === 'fist' || s === 'thumb' || s === 'horn' ? C.amber : s === 'open' || s === 'pinch' ? C.cyan : C.magenta;
 }
 
+export type WorldTheme = 'lake' | 'stars' | 'crystal' | 'eclipse' | 'storm' | 'none';
+
 export class WorldView {
   readonly bg = new Background();
   readonly glyphs = new GlyphBatch(4000);
@@ -81,6 +83,8 @@ export class WorldView {
   private trails = new Map<number, Vec2[]>();
   private icons = new Map<string, Landmark[]>();
   fxEnabled = true;
+  /** Current stage theme; weights cross-fade toward it. */
+  theme: WorldTheme = 'lake';
   pulseAmp = 1;
   private time0 = 0;
   private rippleT0 = -1e9;
@@ -121,8 +125,29 @@ export class WorldView {
   }
 
   /** Hit = 1) hit stop 2) radiate 3) linger (docs/art-direction.md). */
+  /** Zoom punch (0..1): the camera jolts in and eases back — big hits feel heavy. */
+  private punchV = 0;
+  /** Lens aberration kick (0..1). */
+  private aberr = 0;
+  /** World time in seconds (same clock as the particle compute). */
+  private tSec = 0;
+
+  punch(amount: number, aberration = amount): void {
+    if (!this.fxEnabled) return;
+    this.punchV = Math.min(1, this.punchV + amount * Math.max(0.2, this.shake.intensity + 0.3));
+    this.aberr = Math.min(1, this.aberr + aberration);
+  }
+
+  /** A shockwave through the whole particle field (view coords). */
+  shockwave(view: Vec2, strength: number): void {
+    const w = this.gfx.layout.viewToWorld(view);
+    this.particles?.shock(w.x, w.y, strength, this.tSec);
+  }
+
   burst(view: Vec2, rgb: RGB, strength: number, now: number, seed = 0): void {
     const w = this.gfx.layout.viewToWorld(view);
+    this.particles?.shock(w.x, w.y, Math.min(1, 0.3 + strength), this.tSec);
+    this.punch(strength * 0.5, strength * 0.6);
     if (this.fxEnabled) this.hitStopUntil = now + SAFETY.hitStopMs * strength * Math.max(0.3, this.shake.intensity + 0.4);
     this.sparks.burst(w.x, w.y, Math.round(18 + 46 * strength), 0.35 + 0.6 * strength, rgb, 0.6 + 0.4 * strength, 0.011 + 0.006 * strength, seed);
     this.effects.push({ kind: 'ring', x: w.x, y: w.y, t0: now, dur: 380 + 320 * strength, rgb: strength > 0.7 ? C.white : rgb, size: 0.15 + 0.6 * strength });
@@ -155,6 +180,7 @@ export class WorldView {
     const now = f.now;
     if (this.time0 === 0) this.time0 = now;
     const t = (now - this.time0) / 1000;
+    this.tSec = t;
     const visDt = now < this.hitStopUntil ? f.dt * 0.08 : f.dt;
 
     this.bg.fit(L.sa);
@@ -166,9 +192,37 @@ export class WorldView {
     this.bg.uFlash.value = this.flash.value(now);
     this.bg.uRipple.value = clamp((now - this.rippleT0) / 900, 0, 1);
     this.bg.uWarm.value += ((f.energy >= 1 ? 0.35 : 0) - this.bg.uWarm.value) * Math.min(1, f.dt * 2);
+    // Stage themes cross-fade (≈1.5 s).
+    const tw = Math.min(1, f.dt * 1.4);
+    const B = this.bg;
+    const target = (k: WorldView['theme']) => (this.theme === k ? 1 : 0);
+    B.uLake.value += (target('lake') - B.uLake.value) * tw;
+    B.uStars.value += (target('stars') - B.uStars.value) * tw;
+    B.uCrystal.value += (target('crystal') - B.uCrystal.value) * tw;
+    B.uEclipse.value += (target('eclipse') - B.uEclipse.value) * tw;
+    B.uStorm.value += (target('storm') - B.uStorm.value) * tw;
+    B.syncLayers();
+    B.uWarp.value += ((f.energy > 0.5 ? 1.6 : 0.8) - B.uWarp.value) * tw;
 
     const sh = this.fxEnabled ? this.shake.offset(now) : { x: 0, y: 0 };
     this.gfx.camera.position.set(sh.x, sh.y, 5);
+    // Zoom punch & lens aberration decay.
+    this.punchV *= Math.exp(-f.dt * 7);
+    this.aberr *= Math.exp(-f.dt * 5);
+    this.gfx.camera.zoom = 1 + this.punchV * 0.07;
+    this.gfx.camera.updateProjectionMatrix();
+    this.gfx.uAberration.value = 0.12 + this.aberr * 1.6;
+    this.gfx.uVignette.value = 0.45 + this.bg.uDim.value * 0.4;
+    // Charging hands stir a vortex in the particle field.
+    if (this.particles) {
+      for (let i = 0; i < 2; i++) {
+        const h = f.gesture?.hands[i];
+        if (h && h.stance && h.state === 'stance') {
+          const w = L.viewToWorld(h.palm);
+          this.particles.setVortex(i, w.x, w.y, 0.4 + 0.9 * h.charge, L.len(h.size * 3.2));
+        } else this.particles.setVortex(i, 0, 0, 0, 0.1);
+      }
+    }
 
     const hands = f.gesture?.hands ?? [];
     const present = hands.length > 0 || (f.ghost?.length ?? 0) > 0;

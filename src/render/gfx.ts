@@ -1,7 +1,11 @@
 // Renderer bootstrap: WebGPU first, WebGL2 fallback (same TSL code paths).
 import * as THREE from 'three/webgpu';
-import { pass } from 'three/tsl';
+import { pass, uniform, uv, length, float, vec2, vec4, smoothstep } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type N = any;
 import { PALETTE, RENDER } from '../config';
 import { Layout } from './layout';
 
@@ -13,10 +17,12 @@ export class Gfx {
   readonly layout = new Layout();
   pipeline: THREE.RenderPipeline;
   private bloomOn: THREE.RenderPipeline;
+  private bloomNoLens: THREE.RenderPipeline;
   private bloomOff: THREE.RenderPipeline;
   private bloomNode: ReturnType<typeof bloom>;
   private resScale = 1;
   effects = true;
+  lens = true;
 
   private constructor(
     readonly renderer: THREE.WebGPURenderer,
@@ -29,7 +35,14 @@ export class Gfx {
     const color = scenePass.getTextureNode('output');
     const b = bloom(color, RENDER.bloom.strength, RENDER.bloom.radius, RENDER.bloom.threshold);
     this.bloomNode = b;
-    this.bloomOn = new THREE.RenderPipeline(renderer, color.add(b));
+    // Lens: chromatic aberration (punches up on big hits / cinematics) and a soft vignette.
+    const lit = color.add(b) as N;
+    const ca = (chromaticAberration as N)(lit, this.uAberration, vec2(0.5, 0.5), 1.08) as N;
+    const r = length(uv().sub(0.5).mul(1.6)) as N;
+    const vig = float(1).sub(smoothstep(0.55, 1.25, r).mul(this.uVignette)) as N;
+    this.bloomOn = new THREE.RenderPipeline(renderer, vec4(ca.rgb.mul(vig) as N, float(1) as N) as N);
+    // Without the lens pass (one render target less) for slower GPUs.
+    this.bloomNoLens = new THREE.RenderPipeline(renderer, vec4(lit.rgb.mul(vig) as N, float(1) as N) as N);
     this.bloomOff = new THREE.RenderPipeline(renderer, color);
     this.pipeline = this.bloomOn;
   }
@@ -51,13 +64,18 @@ export class Gfx {
     this.resize();
   }
 
+  /** Lens uniforms (driven by the world view). */
+  readonly uAberration = uniform(0.15);
+  readonly uVignette = uniform(0.45);
+
   set bloomStrength(v: number) {
     this.bloomNode.strength.value = v;
   }
 
-  setEffects(on: boolean): void {
+  setEffects(on: boolean, lens = this.lens): void {
     this.effects = on;
-    this.pipeline = on ? this.bloomOn : this.bloomOff;
+    this.lens = lens;
+    this.pipeline = on ? (lens ? this.bloomOn : this.bloomNoLens) : this.bloomOff;
   }
 
   resize(cameraAspect?: number): void {

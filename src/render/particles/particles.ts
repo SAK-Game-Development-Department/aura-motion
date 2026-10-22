@@ -59,6 +59,15 @@ export class Particles {
   readonly uBodyGlow = uniform(1);
   readonly uWarm = uniform(0);
   readonly uKeypoints: ReturnType<typeof uniformArray>;
+  /** Shockwaves from hits: (x, y, t0 seconds, strength) × 4. */
+  private shockValues = Array.from({ length: 4 }, () => new THREE.Vector4(0, 0, -100, 0));
+  private shockSlot = 0;
+  readonly uShocks = uniformArray(this.shockValues, 'vec4');
+  /** Charging-hand vortices: (x, y, strength, radius) × 2. */
+  private vortexValues = Array.from({ length: 2 }, () => new THREE.Vector4(0, 0, 0, 0.2));
+  readonly uVortices = uniformArray(this.vortexValues, 'vec4');
+  /** Implosion (ultimate): (x, y, strength ±, 0). */
+  readonly uImplode = uniform(new THREE.Vector4(0, 0, 0, 0));
   private keypointValues: THREE.Vector2[];
 
   constructor(maxCount: number, fieldW: number, fieldH: number) {
@@ -211,6 +220,34 @@ export class Particles {
         });
       });
 
+      // ── Shockwaves (hits), vortices (charging hands), implosion (ultimate) ──
+      for (let i = 0; i < 4; i++) {
+        const sh = (this.uShocks as N).element(i) as N;
+        const age = this.uTime.sub(sh.z) as N;
+        const dv = P.sub(sh.xy) as N;
+        const dd = length(dv) as N;
+        const off = dd.sub(age.mul(1.15)).div(0.07) as N;
+        const f = exp(off.mul(off).negate()).mul(sh.w).mul(exp(age.mul(-1.6))).mul(select(age.greaterThan(0), float(1), float(0))) as N;
+        V.addAssign(dv.div(max(dd, 1e-3)).mul(f).mul(dt).mul(45.0));
+        heat.assign(max(heat, f.mul(1.4)));
+      }
+      for (let i = 0; i < 2; i++) {
+        const vx = (this.uVortices as N).element(i) as N;
+        const dv = P.sub(vx.xy) as N;
+        const dd = length(dv) as N;
+        const k = smoothstep(vx.w, vx.w.mul(0.15), dd).mul(vx.z).mul(select(role.greaterThan(0.5), float(1), float(0.25))) as N;
+        const tangent = vec2(dv.y.negate(), dv.x).div(max(dd, 1e-3)) as N;
+        V.addAssign(tangent.mul(k).mul(dt).mul(9.0).sub(dv.div(max(dd, 1e-3)).mul(k).mul(dt).mul(3.0)));
+        heat.assign(max(heat, k.mul(0.9)));
+      }
+      {
+        const im = this.uImplode as N;
+        const dv = P.sub(im.xy) as N;
+        const dd = length(dv) as N;
+        V.addAssign(dv.div(max(dd, 1e-3)).mul(im.z).mul(dt).mul(select(role.greaterThan(0.5), float(4.0), float(1.0))));
+        heat.assign(max(heat, abs(im.z).mul(0.3)));
+      }
+
       // Speed cap & integrate.
       const sp = length(V);
       V.mulAssign(min(float(1), float(3.0).div(max(sp, 1e-4))));
@@ -264,6 +301,20 @@ export class Particles {
     if (data.length !== this.fieldData.length) return;
     this.fieldData.set(data);
     this.fieldTex.needsUpdate = true;
+  }
+
+  /** Launch a shockwave at world (x, y) with strength 0..1 at time `t` (seconds, same clock as update). */
+  shock(x: number, y: number, strength: number, t: number): void {
+    this.shockValues[this.shockSlot]!.set(x, y, t, strength);
+    this.shockSlot = (this.shockSlot + 1) % this.shockValues.length;
+  }
+
+  setVortex(i: number, x: number, y: number, strength: number, radius: number): void {
+    this.vortexValues[i]?.set(x, y, strength, radius);
+  }
+
+  setImplode(x: number, y: number, strength: number): void {
+    this.uImplode.value.set(x, y, strength, 0);
   }
 
   setKeypoints(points: ReadonlyArray<{ x: number; y: number }>): void {

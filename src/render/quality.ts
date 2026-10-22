@@ -1,11 +1,13 @@
 // Automatic quality governor. When frames are slow it lowers, in order:
-// particle count → internal resolution → effects (bloom). When there is
+// particle count → lens (chromatic aberration pass) → internal resolution → effects (bloom). When there is
 // headroom for a while it raises them back in reverse order (hysteresis).
 import { QUALITY, RENDER } from '../config';
 
 export interface QualityState {
   particleLevel: number;
   resolutionLevel: number;
+  /** Lens pass (chromatic aberration). */
+  lens: boolean;
   effects: boolean;
 }
 
@@ -15,13 +17,17 @@ export class QualityGovernor {
   private overSince: number | null = null;
   private underSince: number | null = null;
   readonly maxParticleLevel: number;
+  private readonly particlesOn: boolean;
   changes = 0;
 
-  constructor(opts: { webgl: boolean; startLevel?: number }) {
+  constructor(opts: { webgl: boolean; startLevel?: number; particles?: boolean }) {
+    this.particlesOn = opts.particles !== false;
     this.maxParticleLevel = opts.webgl ? RENDER.webglMaxLevel : RENDER.particleLevels.length - 1;
     this.state = {
-      particleLevel: Math.min(opts.startLevel ?? RENDER.startLevel, this.maxParticleLevel),
+      // Without particles, lowering their level gains nothing: start at the bottom.
+      particleLevel: opts.particles === false ? 0 : Math.min(opts.startLevel ?? RENDER.startLevel, this.maxParticleLevel),
       resolutionLevel: RENDER.resolutionScales.length - 1,
+      lens: true,
       effects: true,
     };
   }
@@ -63,6 +69,7 @@ export class QualityGovernor {
   private down(): boolean {
     const s = this.state;
     if (s.particleLevel > 0) s.particleLevel--;
+    else if (s.lens) s.lens = false;
     else if (s.resolutionLevel > 0) s.resolutionLevel--;
     else if (s.effects) s.effects = false;
     else return false;
@@ -75,7 +82,8 @@ export class QualityGovernor {
     const s = this.state;
     if (!s.effects) s.effects = true;
     else if (s.resolutionLevel < RENDER.resolutionScales.length - 1) s.resolutionLevel++;
-    else if (s.particleLevel < this.maxParticleLevel) s.particleLevel++;
+    else if (!s.lens) s.lens = true;
+    else if (this.particlesOn && s.particleLevel < this.maxParticleLevel) s.particleLevel++;
     else return false;
     this.changes++;
     return true;
