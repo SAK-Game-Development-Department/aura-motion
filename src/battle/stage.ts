@@ -6,8 +6,8 @@
 import { Rng } from '../core/rng';
 import { allowedTechniques, TECH, type Technique, type TechniqueFilter } from './techniques';
 
-export type EnemyKind = 'wisp' | 'warden' | 'striker' | 'breaker' | 'lord';
-export type SectionKind = 'intro' | 'rush' | 'guard' | 'boss';
+export type EnemyKind = 'wisp' | 'warden' | 'striker' | 'breaker' | 'lord' | 'eclipse';
+export type SectionKind = 'intro' | 'rush' | 'guard' | 'boss' | 'hidden';
 
 export interface Step {
   tech: string;
@@ -40,6 +40,8 @@ export interface BattleStage {
   sections: Array<{ kind: SectionKind; start: number; end: number }>;
   enemies: Enemy[];
   repairs: number;
+  /** Technique pools (ids) available under this stage's flags — used by the hidden boss and the remnants. */
+  pool: { singles: string[]; seals: string[]; sigils: string[] };
 }
 
 export interface StageOptions extends TechniqueFilter {
@@ -173,15 +175,13 @@ export function generateBattle(o: StageOptions): BattleStage {
         add('wisp', [{ tech: rng.pick(core.length ? core : singles).id, t: m }], lane(rng.int(0, 2), 3), 0.42, 1);
         m = snap(m + beatMs * 3);
       }
-      m = snap(chain[chain.length - 1]!.t! + beatMs * 6);
-      while (m < s.end - beatMs) {
-        add('wisp', [{ tech: rng.pick(singles).id, t: m }], lane(rng.int(0, 2), 3), 0.4, 1);
-        m = snap(m + beatMs * 3);
-      }
+      // After the finisher the session fills the remaining time itself
+      // (hidden boss, then remnant waves) — see BattleSession.afterBoss.
     }
   }
   enemies.sort((a, b) => a.spawn - b.spawn || a.id - b.id);
-  return repairBattle({ seed: o.seed, durationMs, beatMs, sections, enemies, repairs: 0 }, o);
+  const poolIds = { singles: singles.map((t) => t.id), seals: seals.map((t) => t.id), sigils: sigils.map((t) => t.id) };
+  return repairBattle({ seed: o.seed, durationMs, beatMs, sections, enemies, repairs: 0, pool: poolIds }, o);
 }
 
 // ───────────────────────── human-limit validation ─────────────────────────

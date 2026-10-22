@@ -18,7 +18,7 @@ import { C, type WorldView } from './world';
 type RGB = readonly [number, number, number];
 const HUE: Record<Hue, RGB> = { cyan: C.cyan, magenta: C.magenta, amber: C.amber };
 
-const BASE_SIZE: Record<Enemy['kind'], number> = { wisp: 0.075, warden: 0.095, striker: 0.085, breaker: 0.12, lord: 0.22 };
+const BASE_SIZE: Record<Enemy['kind'], number> = { wisp: 0.075, warden: 0.095, striker: 0.085, breaker: 0.12, lord: 0.22, eclipse: 0.26 };
 
 interface Fx {
   kind: Technique['effect'] | 'fizzle' | 'blocked' | 'ultimate' | 'hurt';

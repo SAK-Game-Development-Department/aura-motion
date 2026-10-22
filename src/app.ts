@@ -608,8 +608,8 @@ export class App {
       } else if (e.type === 'section') {
         this.sectionIdx++;
         this.hud.setSection(this.sectionIdx, e.kind, false);
-        const name = { intro: 'かげが あらわれた', rush: 'むれが くる！', guard: 'ひらいて おして ふせげ', boss: '夜ノ主（よるのぬし）' }[e.kind];
-        this.hud.announce(name);
+        const name: Record<string, string> = { intro: 'かげが あらわれた', rush: 'むれが くる！', guard: 'ひらいて おして ふせげ', boss: '夜ノ主（よるのぬし）', hidden: '' };
+        if (name[e.kind]) this.hud.announce(name[e.kind]!);
       }
     }
   }
@@ -672,7 +672,7 @@ export class App {
       const start = now + 800;
       const session = new BattleSession({ stage: { ...stage, enemies: stage.enemies.filter((e) => !e.tutorial) }, dda: false, oneHand: false, twoHandOk: true });
       this.demoBattle = { session, start };
-      const script = this.rt.practice ? showcase(now) : battleBot(session.stage, { playStart: start, errorMs: 40, seed: 3 });
+      const script = this.rt.practice ? showcase(now) : battleBot(session.stage, { session, playStart: start, errorMs: 40, seed: 3 });
       const source = new HandSynthSource(script, 30);
       const engine = new GestureEngine({ shapes: SHAPE_IDS, motions: true, sigils: true, twoHand: true, seals: true });
       const demo = { source, engine, frame: null as GestureFrame | null, field: new FieldBuilder(TRACKING.fieldW, TRACKING.fieldH) };
@@ -729,7 +729,7 @@ export class App {
       // Make a fist exactly on each pulse (stance fires ~2 frames after forming).
       script = perform(this.latCal.pulses.map((p) => ({ at: p - 200, shape: 'fist' as const, holdMs: 250, formMs: 140 })), 'R');
     } else if (this.phase === 'play' && this.bstage) {
-      script = battleBot(this.bstage, { playStart: this.playStart, offsetMs: this.offsetMs, oneHand: this.rt.oneHand, twoHandOk: this.rt.flags.twoHand && !this.rt.oneHand, errorMs: 60, missRate: 0.06, seed: this.bstage.seed });
+      script = battleBot(this.bstage, { session: this.battle ?? undefined, playStart: this.playStart, offsetMs: this.offsetMs, oneHand: this.rt.oneHand, twoHandOk: this.rt.flags.twoHand && !this.rt.oneHand, errorMs: 60, missRate: 0.06, seed: this.bstage.seed });
     } else if (this.phase === 'results') {
       const leave = now + 1200;
       const idle = perform([], 'R');

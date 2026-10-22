@@ -5,7 +5,8 @@ import { JUDGE } from '../config';
 import type { GestureEvent } from '../gesture/engine';
 import { Difficulty } from '../game/difficulty';
 import { applyGrade, newScore, type Grade, type ScoreState } from '../game/score';
-import type { BattleStage, Enemy, SectionKind } from './stage';
+import { Rng } from '../core/rng';
+import type { BattleStage, Enemy, SectionKind, Step } from './stage';
 import { effectiveReq, matches, TECH, TECHNIQUES, type Req, type Technique } from './techniques';
 
 export interface ActiveEnemy {
@@ -28,17 +29,24 @@ export type BattleEvent =
   | { type: 'miss'; t: number; enemy: number; tech: Technique }
   | { type: 'hurt'; t: number; enemy: number }
   | { type: 'blocked'; t: number; enemy: number }
-  | { type: 'ultimate'; t: number; enemy: number; chain: number }
+  | { type: 'ultimate'; t: number; enemy: number; chain: number; hidden: boolean }
+  | { type: 'hiddenBoss'; t: number; enemy: number }
+  | { type: 'remnant'; t: number }
   | { type: 'tutorialSkip'; t: number; enemy: number }
   | { type: 'end'; t: number };
 
 export interface BattleOptions {
   stage: BattleStage;
+  /** Spawn the hidden boss / remnant waves when the boss falls early (no dead time). */
+  hidden?: boolean;
   dda: boolean;
   oneHand: boolean;
   twoHandOk: boolean;
   windowScale?: () => number;
 }
+
+/** Minimum time left after the boss for the hidden boss to appear (ms). */
+export const HIDDEN_MIN_MS = 9000;
 
 /** How early (ms) before a step's time a matching cast still counts (Good). */
 const EARLY_MS = 900;
@@ -54,6 +62,10 @@ export class BattleSession {
   kills = 0;
   ultimates = 0;
   hurts = 0;
+  /** Hidden boss state: when it appeared, and the remnant wave clock. */
+  hiddenAt: number | null = null;
+  private remnantNext: number | null = null;
+  private dynId = 10_000;
   private ei = 0;
   private si = -1;
   private queue: Array<{ t: number; ev: GestureEvent }> = [];
@@ -88,6 +100,7 @@ export class BattleSession {
     this.queue.length = 0;
     this.now = now;
     this.spawn(now);
+    this.spawnRemnants(now);
     this.expire(now);
     if (now >= this.stage.durationMs) {
       this.ended = true;
@@ -180,9 +193,73 @@ export class BattleSession {
       if (boss && a.hits >= Math.min(3, a.e.steps.length)) {
         this.ultimates++;
         this.score.score += 3000;
-        this.events.push({ type: 'ultimate', t, enemy: a.e.id, chain: a.hits });
+        this.events.push({ type: 'ultimate', t, enemy: a.e.id, chain: a.hits, hidden: false });
       }
+      if (a.e.kind === 'eclipse' && a.hits >= Math.ceil(a.e.steps.length * 0.6)) {
+        this.ultimates++;
+        this.score.score += 5000;
+        this.events.push({ type: 'ultimate', t, enemy: a.e.id, chain: a.hits, hidden: true });
+      }
+      if ((boss || a.e.kind === 'eclipse') && this.o.hidden !== false) this.afterBoss(t, a.e.kind === 'eclipse', a.state === 'dead');
     }
+  }
+
+  /**
+   * The boss fell: if there is enough time left, the hidden boss appears;
+   * after it (or if time is short) remnant spirits keep coming to the end.
+   */
+  private afterBoss(t: number, wasHidden: boolean, defeated: boolean): void {
+    const left = this.stage.durationMs - t;
+    // The hidden boss only answers to a *defeated* Night Lord.
+    if (!wasHidden && defeated && left >= HIDDEN_MIN_MS && this.hiddenAt === null) {
+      this.spawnHidden(t);
+      return;
+    }
+    if (left >= 2500) this.remnantNext = t + 1800;
+  }
+
+  private spawnHidden(t: number): void {
+    const rng = new Rng((this.stage.seed ^ 0x5eed) >>> 0);
+    const pool = this.stage.pool;
+    const pick = (ids: string[]) => (ids.length ? rng.pick(ids) : 'saiko');
+    const steps: Step[] = [];
+    const arrive = t + 3200; // entrance cinematic first
+    let at = arrive;
+    const room = this.stage.durationMs - 600;
+    // Phase 1: a quick flurry; phase 2: seals; phase 3: a drawn sigil.
+    const plan: string[] = [pick(pool.singles), pick(pool.singles), pick(pool.singles), ...(pool.seals.length ? [pick(pool.seals), pick(pool.seals)] : [pick(pool.singles)]), pool.sigils.length ? pick(pool.sigils) : pick(pool.singles)];
+    for (const id of plan) {
+      const busy = TECH[id]!.busyMs;
+      if (steps.length) at += Math.max(busy + 500, 1500);
+      if (at > room) break;
+      steps.push({ tech: id, t: Math.round(at) });
+    }
+    if (!steps.length) {
+      this.remnantNext = t + 1800;
+      return;
+    }
+    const e: Enemy = { id: this.dynId++, kind: 'eclipse', spawn: t + 800, arrive, deadline: Infinity, x: 0.5, y: 0.32, steps, tutorial: false, tier: 0 };
+    this.enemies.push({ e, step: 0, state: 'alive', endT: 0, hits: 0, lastMissT: -1e9 });
+    this.hiddenAt = t;
+    this.section = 'hidden';
+    this.events.push({ type: 'hiddenBoss', t, enemy: e.id });
+    this.events.push({ type: 'section', t, kind: 'hidden' });
+  }
+
+  private spawnRemnants(now: number): void {
+    if (this.remnantNext === null || now < this.remnantNext) return;
+    const left = this.stage.durationMs - now;
+    if (left < 2400 + 600) {
+      this.remnantNext = null;
+      return;
+    }
+    const rng = new Rng((this.stage.seed ^ Math.floor(now)) >>> 0);
+    const tech = this.stage.pool.singles.length ? rng.pick(this.stage.pool.singles) : 'saiko';
+    const arrive = Math.round(now + 2000);
+    const e: Enemy = { id: this.dynId++, kind: 'wisp', spawn: now, arrive, deadline: Infinity, x: 0.25 + rng.next() * 0.5, y: 0.3 + rng.next() * 0.12, steps: [{ tech, t: arrive }], tutorial: false, tier: 0 };
+    this.enemies.push({ e, step: 0, state: 'alive', endT: 0, hits: 0, lastMissT: -1e9 });
+    if (this.remnantNext === now || this.events.every((x) => x.type !== 'remnant')) this.events.push({ type: 'remnant', t: now });
+    this.remnantNext = now + Math.max(TECH[tech]!.busyMs, 1500);
   }
 
   private expire(now: number): void {

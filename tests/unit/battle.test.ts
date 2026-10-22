@@ -12,11 +12,11 @@ import { accuracy } from '../../src/game/score';
 const OPTS: Omit<StageOptions, 'seed'> = { flags: DEFAULT_FLAGS, oneHand: false, coreOnly: false, structure: true, twoHandOk: true };
 
 /** Run the full pipeline: synthetic hands → gesture engine → battle session. */
-function play(stageOpts: StageOptions, script: (s: ReturnType<typeof generateValidBattle>) => HandScript, offsetMs = 0) {
+function play(stageOpts: StageOptions, script: (s: ReturnType<typeof generateValidBattle>, session: BattleSession) => HandScript, offsetMs = 0) {
   const stage = generateValidBattle(stageOpts);
   const engine = new GestureEngine({ seals: !stageOpts.oneHand, twoHand: !stageOpts.oneHand, shapes: stageOpts.coreOnly ? ['fist', 'open', 'point'] : undefined });
   const session = new BattleSession({ stage, dda: false, oneHand: stageOpts.oneHand, twoHandOk: stageOpts.twoHandOk });
-  const s = script(stage);
+  const s = script(stage, session);
   const events: BattleEvent[] = [];
   let rt = 0;
   for (let t = 0; t <= stage.durationMs + 1500; t += 1000 / 30) {
@@ -65,13 +65,13 @@ describe('battle stage', () => {
 
 describe('battle session (full pipeline: hands → gestures → battle)', () => {
   it('the bot clears the stage: kills, the boss chain, the ultimate', () => {
-    const { session, events, stage } = play({ ...OPTS, seed: 42 }, (st) => battleBot(st, { playStart: 0 }));
+    const { session, events, stage } = play({ ...OPTS, seed: 42 }, (st, ses) => battleBot(st, { playStart: 0, session: ses }));
     const hits = events.filter((e) => e.type === 'hit');
     const total = timeline(stage).length + stage.enemies.filter((e) => e.tutorial).length;
     expect(hits.length / total).toBeGreaterThan(0.85);
-    expect(session.ultimates).toBe(1);
+    expect(session.ultimates).toBeGreaterThanOrEqual(1);
     expect(events.some((e) => e.type === 'blocked')).toBe(true);
-    expect(events.filter((e) => e.type === 'section').map((e) => (e as { kind: string }).kind)).toEqual(['intro', 'rush', 'guard', 'boss']);
+    expect(events.filter((e) => e.type === 'section').map((e) => (e as { kind: string }).kind).slice(0, 4)).toEqual(['intro', 'rush', 'guard', 'boss']);
     expect(accuracy(session.score)).toBeGreaterThan(0.8);
     expect(session.ended).toBe(true);
   });
@@ -109,3 +109,24 @@ import { defaultHand, relaxedHand } from '../../src/gesture/handModel';
 function buildIdle(t: number) {
   return relaxedHand({ ...defaultHand('R'), wrist: { x: 0.6 + Math.sin(t / 700) * 0.05, y: 0.7 } }, 0.3);
 }
+
+describe('hidden boss & no dead time', () => {
+  it('beating the boss early summons the hidden boss, then remnants keep coming', () => {
+    const { session, events, stage } = play({ ...OPTS, seed: 42 }, (st, ses) => battleBot(st, { playStart: 0, session: ses }));
+    const hb = events.find((e) => e.type === 'hiddenBoss');
+    expect(hb, 'hidden boss appeared').toBeTruthy();
+    expect(events.filter((e) => e.type === 'section').map((e) => (e as { kind: string }).kind)).toContain('hidden');
+    expect(events.some((e) => e.type === 'ultimate' && e.hidden)).toBe(true);
+    expect(session.ultimates).toBe(2);
+    // No long stretch without an enemy after the boss section starts.
+    const bossStart = stage.sections.find((x) => x.kind === 'boss')!.start;
+    const spawnTimes = [bossStart, ...events.filter((e) => e.type === 'hit').map((e) => e.t)].sort((a, b) => a - b);
+    for (let i = 1; i < spawnTimes.length; i++) expect(spawnTimes[i]! - spawnTimes[i - 1]!, `gap before ${spawnTimes[i]}`).toBeLessThan(8000);
+    expect(stage.durationMs - spawnTimes[spawnTimes.length - 1]!).toBeLessThan(6000);
+  });
+  it('the hidden boss can be turned off', () => {
+    const stage = generateValidBattle({ ...OPTS, seed: 42 });
+    const s = new BattleSession({ stage, dda: false, oneHand: false, twoHandOk: true, hidden: false });
+    expect(s).toBeTruthy();
+  });
+});

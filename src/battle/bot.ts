@@ -26,6 +26,8 @@ export interface BotOptions {
   /** Timing error amplitude (ms). */
   errorMs?: number;
   seed?: number;
+  /** Live session: the bot also fights enemies that appear during play (hidden boss, remnants). */
+  session?: { enemies: Array<{ e: { id: number; steps: Array<{ tech: string; t: number | null }>; arrive: number }; state: string }> };
 }
 
 const SIZE = 0.15;
@@ -85,18 +87,22 @@ export function battleBot(stage: BattleStage, o: BotOptions): HandScript {
   const rng = new Rng(o.seed ?? 9);
   const off = o.offsetMs ?? 0;
   const acts: Act[] = [];
-  for (const e of stage.enemies) {
+  const known = new Set<number>();
+  const schedule = (e: { id: number; steps: Array<{ tech: string; t: number | null }>; arrive: number }) => {
+    known.add(e.id);
     for (const st of e.steps) {
       if (o.missRate && rng.chance(o.missRate)) continue;
       const req = effectiveReq(TECH[st.tech]!, !!o.oneHand, o.twoHandOk ?? true);
       const T = (st.t ?? e.arrive + 500) + off + (o.errorMs ? rng.range(-o.errorMs, o.errorMs) : 0);
       acts.push(actFor(req, T));
     }
-  }
-  acts.sort((a, b) => a.start - b.start);
+    acts.sort((a, b) => a.start - b.start);
+  };
+  for (const e of stage.enemies) schedule(e);
   const idle = (t: number) => [relaxedHand({ ...defaultHand('R'), size: SIZE, wrist: { x: REST_R.x + Math.sin(t / 900) * 0.01, y: REST_R.y } }, 0.15)];
   return (tAbs: number) => {
     const t = tAbs - o.playStart;
+    if (o.session) for (const a of o.session.enemies) if (!known.has(a.e.id)) schedule(a.e);
     for (const a of acts) {
       if (a.start > t) break;
       if (t < a.end) return a.hands(t);
