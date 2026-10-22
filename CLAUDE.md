@@ -35,7 +35,8 @@ SwiftShader は粒子が多いと 1fps 以下になるので、E2E は `flags=-p
 - `src/render/` — Three.js WebGPURenderer + TSL（手の粒子、光の骨格、指先の軌跡、技の演出）。`src/ui/` HUD、`src/exhibit/` 展示機能、`src/debug/` Dキーのオーバーレイ
 - `tools/gesture-lab/` — ジェスチャーラボ（ライブ認識・ランドマークだけの記録・混同行列・閾値調整）。**展示ビルドには含めない**（別の Vite 設定 `vite.lab.config.ts`）
 - `src/battle/` — 戦闘（決定的）: `techniques.ts`（術の一覧と条件）、`stage.ts`（シードから敵の生成と人の手の限界での検証）、`session.ts`（判定・スコア）、`bot.ts`（自動プレイ）
-- `src/render/battleView.ts` / `enemies.ts` — 影の敵、弱点の印、術ごとの演出、奥義の結界。`src/ui/hud.ts` のカットイン
+- `src/render/battleView.ts` / `enemies.ts` — 影の敵、弱点の印、術ごとの演出、出現の裂け目・撃破の破片、奥義の結界、隠しボス。`src/ui/hud.ts` のカットイン、`src/ui/techLens.ts`（T キー。技術の可視化）
+- `src/render/background.ts` — ステージごとの背景（湖・星・結晶・月蝕・嵐。テーマごとに別メッシュ）
 - `src/app.ts` — 全体の状態遷移（Loading → Title(アトラクト) → Calibrate → Play(戦闘90秒) → Results → Title。`?practice=1` で練習モード）
 
 ## 規約
