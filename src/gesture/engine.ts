@@ -115,6 +115,10 @@ export class GestureEngine {
   private ctx = new Map<number, HandCtx>();
   private two = new TwoHandDetector();
   private sealDet = new SealDetector();
+  /** Seals the game is waiting for right now (assist: easier to form). Set by the game each frame. */
+  expectSeals: ReadonlySet<SealKind> = new Set();
+  /** Last two-hand pair while a seal was forming (pressed hands can make one vanish briefly). */
+  private sealLatch: { hands: [GestureHand, GestureHand]; t: number } | null = null;
   classifier: Classifier;
   thresholds: Thresholds;
   opts: EngineOptions;
@@ -138,6 +142,7 @@ export class GestureEngine {
     this.ctx.clear();
     this.two.reset();
     this.sealDet.reset();
+    this.sealLatch = null;
   }
 
   update(f: PoseFrame): GestureFrame {
@@ -237,10 +242,18 @@ export class GestureEngine {
     // Seals: two hands together in one of the seal configurations, held briefly.
     let seal: GestureFrame["seal"] = null;
     if (this.opts.seals) {
-      const a = out[0];
-      const b = out[1];
-      const sc = a && b ? sealScores(toSealHand(a), toSealHand(b), asp) : null;
-      const fired = this.sealDet.update(t, sc);
+      let a = out[0];
+      let b = out[1];
+      // Occlusion: while a seal is forming, a hand that vanishes for a moment is
+      // kept at its last place (the other hand is still there and holding).
+      if (a && b) this.sealLatch = this.sealDet.progress ? { hands: [a, b], t } : null;
+      else if (a && !b && this.sealLatch && t - this.sealLatch.t < GESTURE.seal.occlusionMs) {
+        const [p, q] = this.sealLatch.hands;
+        b = p.slot === a.slot ? q : q.slot === a.slot ? p : undefined;
+      } else this.sealLatch = null;
+      if (a && b && a.palm.x > b.palm.x) [a, b] = [b, a];
+      const sc = a && b ? sealScores(toSealHand(a), toSealHand(b), asp, this.expectSeals) : null;
+      const fired = this.sealDet.update(t, sc, this.expectSeals);
       seal = this.sealDet.progress;
       if (fired) {
         events.push({ type: "seal", t, kind: fired });

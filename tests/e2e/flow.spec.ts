@@ -6,7 +6,8 @@ import { FAST, state, testHook, waitFor } from './helpers';
 test('full loop: hand shown → stage selection → calibration → battle (all sections, boss ultimate) → results → title', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(`/${FAST}`);
+  // Fixed seed: the autoplay bot skips ~6 % of moves on purpose; this seed keeps the boss chain intact (the loop is what is tested).
+  await page.goto(`/${FAST}&seed=11`);
   const seen: string[] = [];
   const s0 = await waitFor(page, (s) => s.phase === 'title', 60_000, seen);
   expect(['webgpu', 'webgl2']).toContain(s0.backend);
@@ -16,7 +17,7 @@ test('full loop: hand shown → stage selection → calibration → battle (all 
   const st = await state(page);
   expect(st.thresholdsCalibrated).toBe(true);
   expect(st.calibrated).toBe(true);
-  expect(st.stage).toBe('normal'); // the bot holds its hand over the middle card
+  expect(st.stage).toBe('hoshi'); // the bot picks 中級, then its first stage
   const sections = new Set<string>();
   let last = st;
   await waitFor(

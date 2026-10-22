@@ -24,7 +24,8 @@ export const TRACKING = {
   fieldW: 192,
   fieldH: 108,
   /** Camera request. */
-  camera: { width: 1280, height: 720, frameRate: 30 },
+  // 60 fps when the camera can: fresher frames (the tracker keeps only the latest).
+  camera: { width: 1280, height: 720, frameRate: 60 },
   /** Below this mean hand detection score, tracking counts as unstable. */
   unstableScore: 0.7,
   /** Frame luma (0..1) below which the room is "dark". */

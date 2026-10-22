@@ -2,7 +2,6 @@
 // compresses durations for E2E/soak tests without touching game logic.
 import { EXHIBIT, HAND, LATENCY } from './index';
 import { DEFAULT_FLAGS, parseFlags, type Flags } from './flags';
-import type { DifficultyId } from './game';
 
 export type SourceChoice = 'camera' | 'synth' | 'autoplay' | 'mouse' | 'replay' | 'empty';
 
@@ -15,8 +14,10 @@ export interface Runtime {
   calm: boolean;
   /** One-hand mode: every technique has a one-hand alternative; two-hand moves are never required. */
   oneHand: boolean;
-  /** Fixed stage (staff): skips the stage selection. */
-  stage: DifficultyId | null;
+  /** Fixed difficulty or stage (staff): 'easy'…'hard' skips the first selection, a stage id ('yoi', …) skips both. */
+  stage: string | null;
+  /** Tests only: let synthetic plays submit to the (mocked) ranking API. Real submissions come from camera plays. */
+  onlineTest: boolean;
   /** Free practice (live recognition) instead of the battle. */
   practice: boolean;
   forceWebGL: boolean;
@@ -54,7 +55,8 @@ export function readRuntime(search: string): Runtime {
     debug: q.get('debug') === '1',
     calm: q.get('calm') === '1',
     oneHand: q.get('onehand') === '1',
-    stage: (['easy', 'normal', 'hard'] as const).find((s) => s === q.get('stage')) ?? null,
+    stage: q.get('stage'),
+    onlineTest: q.get('onlinetest') === '1',
     practice: q.get('practice') === '1',
     forceWebGL: q.get('webgl') === '1',
     quality: quality !== null ? Math.max(0, Math.min(5, Number(quality))) : null,

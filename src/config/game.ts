@@ -5,6 +5,9 @@ export const JUDGE = {
   goodMs: 380,
   /** Window multiplier when tracking is unstable (dark room etc.). */
   unstableWindowScale: 1.5,
+  /** Two-hand seals: wider timing window, and the engine's seal assist starts this early. */
+  sealWindowScale: 1.6,
+  sealAssistLeadMs: 1600,
   scorePerfect: 300,
   scoreGood: 120,
   /** Combo multiplier: 1 + floor(combo / step) * add, capped. */

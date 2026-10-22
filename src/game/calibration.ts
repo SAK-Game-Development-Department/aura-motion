@@ -1,8 +1,8 @@
 // Latency calibration: the player makes a fist on each light pulse; the median
 // offset between the detected moments (capture clock) and the pulses is the
 // system + human latency used to shift judgement.
-import { LATENCY } from '../config';
-import { clamp, median } from '../core/math';
+import { LATENCY } from "../config";
+import { clamp, median } from "../core/math";
 
 export interface CalibrationResult {
   offsetMs: number;
@@ -21,7 +21,8 @@ export class LatencyCalibrator {
     readonly intervalMs: number = LATENCY.calibIntervalMs,
   ) {
     this.pulses = [];
-    for (let i = 0; i < pulseCount; i++) this.pulses.push(startT + LATENCY.calibLeadInMs + i * intervalMs);
+    for (let i = 0; i < pulseCount; i++)
+      this.pulses.push(startT + LATENCY.calibLeadInMs + i * intervalMs);
   }
 
   get endT(): number {
@@ -39,7 +40,9 @@ export class LatencyCalibrator {
 
   /** Number of pulses that already have a matching event (live feedback). */
   matched(): number {
-    return this.pulses.filter((p) => this.events.some((c) => Math.abs(c - p) <= LATENCY.calibAcceptMs)).length;
+    return this.pulses.filter((p) =>
+      this.events.some((c) => Math.abs(c - p) <= LATENCY.calibAcceptMs),
+    ).length;
   }
 
   result(): CalibrationResult {
@@ -48,11 +51,24 @@ export class LatencyCalibrator {
       let best: number | null = null;
       for (const c of this.events) {
         const d = c - p;
-        if (Math.abs(d) <= LATENCY.calibAcceptMs && (best === null || Math.abs(d) < Math.abs(best))) best = d;
+        if (
+          Math.abs(d) <= LATENCY.calibAcceptMs &&
+          (best === null || Math.abs(d) < Math.abs(best))
+        )
+          best = d;
       }
       if (best !== null) samples.push(best);
     }
-    if (samples.length < Math.min(LATENCY.calibMinSamples, this.pulseCount)) return { offsetMs: LATENCY.defaultOffsetMs, samples, accepted: false };
-    return { offsetMs: clamp(median(samples), LATENCY.minOffsetMs, LATENCY.maxOffsetMs), samples, accepted: true };
+    if (samples.length < Math.min(LATENCY.calibMinSamples, this.pulseCount))
+      return { offsetMs: LATENCY.defaultOffsetMs, samples, accepted: false };
+    return {
+      offsetMs: clamp(
+        median(samples),
+        LATENCY.minOffsetMs,
+        LATENCY.maxOffsetMs,
+      ),
+      samples,
+      accepted: true,
+    };
   }
 }

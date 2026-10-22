@@ -7,18 +7,25 @@
 //   soshi   双指 both index fingers pointing, fingertips touching
 //   kanmon  環門 thumbs and index fingers form a frame (thumb tips touching)
 //   kosa    交差 both "two" (V) hands crossed in front of the chest
+import { GESTURE } from '../config';
 import { HL, type Vec2 } from '../core/types';
 import type { ShapeId } from './handModel';
 
 export type SealKind = 'gassho' | 'kensho' | 'soshi' | 'kanmon' | 'kosa';
 export const SEAL_IDS: SealKind[] = ['gassho', 'kensho', 'soshi', 'kanmon', 'kosa'];
 
-export const SEAL_KANJI: Record<SealKind, string> = { gassho: '合', kensho: '拳掌', soshi: '双指', kanmon: '環門', kosa: '交差' };
+export const SEAL_KANJI: Record<SealKind, string> = { gassho: '合掌', kensho: 'グーとパー', soshi: '指タッチ', kanmon: 'フレーム', kosa: 'クロスチョキ' };
 export const SEAL_READING: Record<SealKind, string> = { gassho: 'がっしょう', kensho: 'けんしょう', soshi: 'そうし', kanmon: 'かんもん', kosa: 'こうさ' };
 
 /** What a seal needs from each hand (order-free) and how close things must be (palm units). */
 interface SealDef {
   shapes: [ShapeId, ShapeId];
+  /**
+   * Shapes also accepted for each role when the game is waiting for this seal
+   * ("assist"): hands pressed together hide fingers from the camera, so the
+   * per-hand shape is often misread even when the seal is right.
+   */
+  loose: [ShapeId[], ShapeId[]];
   /** Palm-centre distance limit. */
   maxPalm?: number;
   /** Specific landmark pair distance limit: [landmark on hand A, landmark on hand B, max]. */
@@ -26,11 +33,11 @@ interface SealDef {
 }
 
 const DEFS: Record<SealKind, SealDef> = {
-  gassho: { shapes: ['open', 'open'], maxPalm: 1.5 },
-  kensho: { shapes: ['fist', 'open'], maxPalm: 1.4 },
-  soshi: { shapes: ['point', 'point'], touch: [HL.indexTip, HL.indexTip, 0.7] },
-  kanmon: { shapes: ['ell', 'ell'], touch: [HL.thumbTip, HL.thumbTip, 0.8] },
-  kosa: { shapes: ['two', 'two'], maxPalm: 1.9 },
+  gassho: { shapes: ['open', 'open'], loose: [['open', 'two', 'point', 'thumb', 'horn'], ['open', 'two', 'point', 'thumb', 'horn']], maxPalm: 1.5 },
+  kensho: { shapes: ['fist', 'open'], loose: [['fist', 'thumb', 'pinch'], ['open', 'two', 'thumb', 'ell']], maxPalm: 1.4 },
+  soshi: { shapes: ['point', 'point'], loose: [['point', 'two', 'ell', 'horn'], ['point', 'two', 'ell', 'horn']], touch: [HL.indexTip, HL.indexTip, 0.7] },
+  kanmon: { shapes: ['ell', 'ell'], loose: [['ell', 'point', 'open', 'pinch', 'two'], ['ell', 'point', 'open', 'pinch', 'two']], touch: [HL.thumbTip, HL.thumbTip, 0.8] },
+  kosa: { shapes: ['two', 'two'], loose: [['two', 'point', 'horn', 'open'], ['two', 'point', 'horn', 'open']], maxPalm: 1.9 },
 };
 
 export interface SealHand {
@@ -41,20 +48,25 @@ export interface SealHand {
   scores: Partial<Record<ShapeId, number>>;
 }
 
-/** Score 0..1 for each seal given two hands. */
-export function sealScores(a: SealHand, b: SealHand, aspect: number): Record<SealKind, number> {
+/** Score 0..1 for each seal given two hands. Seals in `assist` also accept their loose shapes and a looser distance. */
+export function sealScores(a: SealHand, b: SealHand, aspect: number, assist?: ReadonlySet<SealKind>): Record<SealKind, number> {
   const unit = (a.size + b.size) / 2;
   const dPalm = Math.hypot((a.palm.x - b.palm.x) * aspect, a.palm.y - b.palm.y) / unit;
   const out = {} as Record<SealKind, number>;
   for (const k of SEAL_IDS) {
     const d = DEFS[k];
-    const [s1, s2] = d.shapes;
+    const loose = assist?.has(k) ?? false;
+    const r1: readonly ShapeId[] = loose ? d.loose[0] : [d.shapes[0]];
+    const r2: readonly ShapeId[] = loose ? d.loose[1] : [d.shapes[1]];
+    const fit = (h: SealHand, role: readonly ShapeId[]) => role.reduce((m, s) => Math.max(m, h.scores[s] ?? 0), 0);
     // Either hand may take either role.
-    const shapeFit = Math.max(Math.min(a.scores[s1] ?? 0, b.scores[s2] ?? 0), Math.min(a.scores[s2] ?? 0, b.scores[s1] ?? 0));
+    const shapeFit = Math.max(Math.min(fit(a, r1), fit(b, r2)), Math.min(fit(a, r2), fit(b, r1)));
+    const slack = loose ? GESTURE.seal.assistDistance : 1;
     let near = 1;
-    if (d.maxPalm !== undefined) near = Math.min(near, clamp01((d.maxPalm * 1.3 - dPalm) / (d.maxPalm * 0.3)));
+    if (d.maxPalm !== undefined) near = Math.min(near, clamp01((d.maxPalm * slack * 1.3 - dPalm) / (d.maxPalm * slack * 0.3)));
     if (d.touch) {
-      const [ia, ib, max] = d.touch;
+      const [ia, ib, max0] = d.touch;
+      const max = max0 * slack;
       const pa = a.lm[ia]!;
       const pb = b.lm[ib]!;
       const dt = Math.hypot((pa.x - pb.x) * aspect, pa.y - pb.y) / unit;
@@ -79,8 +91,8 @@ export class SealDetector {
   progress: { kind: SealKind; k: number } | null = null;
 
   constructor(
-    private holdMs = 280,
-    private threshold = 0.7,
+    private holdMs: number = GESTURE.seal.holdMs,
+    private threshold: number = GESTURE.seal.threshold,
   ) {}
 
   reset(): void {
@@ -89,7 +101,8 @@ export class SealDetector {
     this.progress = null;
   }
 
-  update(t: number, scores: Record<SealKind, number> | null): SealKind | null {
+  /** `assist`: seals the game is waiting for — a lower bar and a shorter hold, and they win over other seals. */
+  update(t: number, scores: Record<SealKind, number> | null, assist?: ReadonlySet<SealKind>): SealKind | null {
     if (!scores) {
       this.cand = null;
       this.fired = null;
@@ -98,23 +111,37 @@ export class SealDetector {
     }
     let best: SealKind | null = null;
     let bv = 0;
-    for (const k of SEAL_IDS) {
-      if (scores[k] > bv) {
-        bv = scores[k];
-        best = k;
+    let max = 0;
+    for (const k of SEAL_IDS) max = Math.max(max, scores[k]);
+    // An awaited seal above the assist bar wins.
+    if (assist) {
+      for (const k of assist) {
+        if (scores[k] >= GESTURE.seal.assistThreshold && scores[k] > bv) {
+          bv = scores[k];
+          best = k;
+        }
       }
     }
-    if (!best || bv < this.threshold) {
+    const assisted = best !== null;
+    if (!best) {
+      for (const k of SEAL_IDS) {
+        if (scores[k] > bv) {
+          bv = scores[k];
+          best = k;
+        }
+      }
+    }
+    if (!best || (!assisted && bv < this.threshold)) {
       this.cand = null;
       this.progress = null;
-      if (bv < this.threshold * 0.6) this.fired = null;
+      if (max < this.threshold * 0.6 && !(assist && max >= GESTURE.seal.assistThreshold * 0.6)) this.fired = null;
       return null;
     }
     if (best !== this.cand) {
       this.cand = best;
       this.since = t;
     }
-    const k = Math.min(1, (t - this.since) / this.holdMs);
+    const k = Math.min(1, (t - this.since) / (assisted ? GESTURE.seal.assistHoldMs : this.holdMs));
     this.progress = { kind: best, k };
     if (k >= 1 && this.fired !== best) {
       this.fired = best;

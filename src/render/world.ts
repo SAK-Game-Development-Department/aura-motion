@@ -5,6 +5,8 @@ import { PALETTE, SAFETY, hexToLinear } from '../config';
 import { clamp, ease } from '../core/math';
 import { HAND_BONES, type Landmark, type Vec2 } from '../core/types';
 import type { GestureEvent, GestureFrame, GestureHand } from '../gesture/engine';
+import { HandPredictor } from '../gesture/predict';
+import type { StageTheme } from '../battle/stages';
 import { buildHand, defaultHand, withShape, type ShapeId, type SynthHand } from '../gesture/handModel';
 import { Background } from './background';
 import { FlashLimiter, Shake } from './fx/safety';
@@ -68,9 +70,11 @@ export function shapeColor(s: ShapeId): RGB {
   return s === 'fist' || s === 'thumb' || s === 'horn' ? C.amber : s === 'open' || s === 'pinch' ? C.cyan : C.magenta;
 }
 
-export type WorldTheme = 'lake' | 'stars' | 'crystal' | 'eclipse' | 'storm' | 'ember' | 'none';
+export type WorldTheme = StageTheme | 'none';
 
 export class WorldView {
+  /** Extrapolates the drawn hands to render time (hides tracking latency). */
+  readonly predictor = new HandPredictor();
   readonly bg = new Background();
   readonly glyphs = new GlyphBatch(4000);
   readonly sparks = new Sparks(900);
@@ -203,6 +207,10 @@ export class WorldView {
     B.uEclipse.value += (target('eclipse') - B.uEclipse.value) * tw;
     B.uStorm.value += (target('storm') - B.uStorm.value) * tw;
     B.uEmber.value += (target('ember') - B.uEmber.value) * tw;
+    B.uSea.value += (target('sea') - B.uSea.value) * tw;
+    B.uSnow.value += (target('snow') - B.uSnow.value) * tw;
+    B.uThunder.value += (target('thunder') - B.uThunder.value) * tw;
+    B.uPetal.value += (target('petal') - B.uPetal.value) * tw;
     B.syncLayers();
     B.uWarp.value += ((f.energy > 0.5 ? 1.6 : 0.8) - B.uWarp.value) * tw;
 
@@ -242,7 +250,7 @@ export class WorldView {
       P.uReveal.value = ease.outCubic(this.reveal);
       P.uWarm.value = this.bg.uWarm.value;
       P.uFlowOn.value = 0;
-      const src: Landmark[][] = hands.length ? hands.map((h) => h.lm) : (f.ghost ?? []).map((g) => buildHand(g));
+      const src: Landmark[][] = hands.length ? hands.map((h) => this.predictor.predict(h, now).lm) : (f.ghost ?? []).map((g) => buildHand(g));
       if (src.length) {
         const kps: Vec2[] = [];
         for (let i = 0; i < KEYPOINTS.length; i++) kps.push(L.viewToWorld(src[i % src.length]![KEYPOINTS[i]!]!));
@@ -284,10 +292,12 @@ export class WorldView {
     const g = this.glyphs;
     const stanceRgb = h.stance ? shapeColor(h.stance) : C.cyan;
     const lineI = (f.particles ? 0.3 + (1 - this.reveal) * 0.6 : 0.9) * k;
-    this.drawSkeleton(h.lm, h.stance ? stanceRgb : C.cyan, lineI, 0.0045);
+    // Drawn where the hand is *now* (extrapolated), not where it was when captured.
+    const ph = this.predictor.predict(h, now);
+    this.drawSkeleton(ph.lm, h.stance ? stanceRgb : C.cyan, lineI, 0.0045);
 
     // Fingertip light trail.
-    const tip = L.viewToWorld(h.tipPred);
+    const tip = L.viewToWorld(ph.tip);
     let tr = this.trails.get(h.slot);
     if (!tr) this.trails.set(h.slot, (tr = []));
     tr.push(tip);
@@ -311,7 +321,7 @@ export class WorldView {
     }
 
     // Stance: charge ring around the palm + the recognised shape icon above the hand.
-    const palm = L.viewToWorld(h.palm);
+    const palm = L.viewToWorld(ph.palm);
     const pr = h.size * L.k * 1.25;
     if (h.stance) {
       // Charge: the ring contracts onto the palm as the stance charges.

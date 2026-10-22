@@ -2,7 +2,7 @@ import './audience.css';
 import { CHANNEL, type AudienceState } from '../exhibit/broadcast';
 import { HAND_BONES } from '../core/types';
 
-const SECTION: Record<string, string> = { intro: '開幕', rush: '群れ', guard: '守り', boss: '主', hidden: '隠し主' };
+const SECTION: Record<string, string> = { intro: '序盤', rush: 'ラッシュ', guard: '防御', boss: 'ボス', hidden: '隠しボス' };
 const $ = (id: string) => document.getElementById(id)!;
 const cv = $('mini') as HTMLCanvasElement;
 const ctx = cv.getContext('2d')!;

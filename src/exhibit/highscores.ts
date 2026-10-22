@@ -8,11 +8,23 @@ export interface ScoreEntry {
   /** Unix ms. */
   at: number;
   seated: boolean;
-  /** Stage (difficulty) id; entries from before stages count as 'normal'. */
+  /** Stage id (e.g. 'yoi'). */
   stage?: string;
+  /** Difficulty ('easy' | 'normal' | 'hard'). Rankings are per difficulty. */
+  diff?: string;
+  /** Stage name for display (e.g. 宵ノ湖). */
+  stageName?: string;
 }
 
-const stageOf = (e: ScoreEntry) => e.stage ?? 'normal';
+const LEGACY = ['easy', 'normal', 'hard'];
+/** Difficulty of an entry (older entries stored the difficulty as `stage`, or nothing → normal). */
+export const diffOf = (e: ScoreEntry) => e.diff ?? (e.stage && LEGACY.includes(e.stage) ? e.stage : 'normal');
+
+export interface ScoreFilter {
+  diff?: string;
+  stage?: string;
+}
+const pass = (e: ScoreEntry, f?: ScoreFilter) => (!f?.diff || diffOf(e) === f.diff) && (!f?.stage || e.stage === f.stage);
 
 const KEY = 'aura.highscores.v1';
 
@@ -43,18 +55,20 @@ export class HighScores {
     }
   }
 
-  /** Best scores (of one stage, or of all stages). */
-  list(stage?: string): ScoreEntry[] {
-    const all = this.all();
-    return (stage ? all.filter((e) => stageOf(e) === stage) : all).sort((a, b) => b.score - a.score || a.at - b.at).slice(0, EXHIBIT.highscores);
+  /** Best scores (of one difficulty / stage, or of everything). */
+  list(f?: ScoreFilter): ScoreEntry[] {
+    return this.all()
+      .filter((e) => pass(e, f))
+      .sort((a, b) => b.score - a.score || a.at - b.at)
+      .slice(0, EXHIBIT.highscores);
   }
 
-  /** Insert; returns 0-based rank in its stage's table or -1 if it did not place. Each stage keeps its own top N. */
+  /** Insert; returns 0-based rank in its difficulty's table or -1 if it did not place. Each difficulty keeps its own top N. */
   add(e: ScoreEntry): number {
-    const st = stageOf(e);
-    const mine = [...this.all().filter((x) => stageOf(x) === st), e].sort((a, b) => b.score - a.score || a.at - b.at).slice(0, EXHIBIT.highscores);
+    const d = diffOf(e);
+    const mine = [...this.all().filter((x) => diffOf(x) === d), e].sort((a, b) => b.score - a.score || a.at - b.at).slice(0, EXHIBIT.highscores);
     const idx = mine.indexOf(e);
-    const others = this.all().filter((x) => stageOf(x) !== st);
+    const others = this.all().filter((x) => diffOf(x) !== d);
     try {
       this.kv?.setItem(KEY, JSON.stringify([...others, ...mine]));
     } catch {
@@ -64,8 +78,8 @@ export class HighScores {
   }
 
   /** Scores achieved today (for the daily ranking). */
-  today(now = Date.now(), stage?: string): ScoreEntry[] {
+  today(now = Date.now(), f?: ScoreFilter): ScoreEntry[] {
     const d = new Date(now).toDateString();
-    return this.list(stage).filter((e) => new Date(e.at).toDateString() === d);
+    return this.list(f).filter((e) => new Date(e.at).toDateString() === d);
   }
 }

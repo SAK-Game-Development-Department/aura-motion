@@ -1,0 +1,13 @@
+# Cloudflare Pages (aura-motion): static site + Pages Functions (functions/api/*)
+# with a D1 database for the shared ranking. The gesture lab is deployed from
+# dist-lab/ with its own working directory, so it gets neither this file nor the
+# functions.
+name = "aura-motion"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-07-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "aura-scores"
+database_id = "b59bc9d1-262d-4af6-96cf-c1846cdb4be0"
+migrations_dir = "migrations"

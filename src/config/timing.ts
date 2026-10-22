@@ -17,11 +17,13 @@ export const LATENCY = {
   maxPredictMs: 120,
   /** Fraction of measured pipeline latency to predict ahead (0..1). 1 = full compensation. */
   predictFraction: 0.7,
+  /** Drawn hand: fraction of (now − capture time) extrapolated with landmark velocities. */
+  displayPredictGain: 0.85,
 } as const;
 
 export const FILTER = {
   /** One Euro filter params for hand positions (normalized coords, seconds). */
-  hand: { minCutoff: 1.6, beta: 18, dCutoff: 1.0 },
+  hand: { minCutoff: 2.0, beta: 28, dCutoff: 1.2 },
   /** Palm / wrist — steadier. */
   palm: { minCutoff: 1.0, beta: 6, dCutoff: 1.0 },
 } as const;

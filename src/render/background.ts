@@ -19,7 +19,7 @@ export class Background {
   readonly uAspect = uniform(16 / 9);
   readonly uIntensity = uniform(1); // section energy (Finale = high)
   readonly uWarm = uniform(0); // amber tint (flow/finale)
-  /** 0..1 barrier ("天輪結界") pattern for the ultimate. */
+  /** 0..1 barrier pattern for the finishing move. */
   readonly uDomain = uniform(0);
   /** 0..1 darkening for cinematic cut-ins. */
   readonly uDim = uniform(0);
@@ -30,6 +30,10 @@ export class Background {
   readonly uEclipse = uniform(0);
   readonly uStorm = uniform(0);
   readonly uEmber = uniform(0);
+  readonly uSea = uniform(0);
+  readonly uSnow = uniform(0);
+  readonly uThunder = uniform(0);
+  readonly uPetal = uniform(0);
   /** Warp speed for the star corridor (rises with action). */
   readonly uWarp = uniform(1);
 
@@ -185,6 +189,78 @@ export class Background {
       const xx = fract(cx).sub(0.5).add(sin(q.y.mul(9.0).add(t.mul(1.3)).add(r1.mul(6.28))).mul(0.25)) as N;
       const spark = smoothstep(0.09, 0.0, length(vec2(xx, yy.sub(0.5).mul(cols.div(9.0)))) as N).mul(step01(r1, 0.45)).mul(smoothstep(1.0, 0.3, q.y)) as N;
       return verm.mul(heat).add(mix(verm, amber, r2).mul(spark.mul(1.4))).add(vec3(0.05, 0.005, 0.0).mul(heatN)) as N;
+    });
+
+    // ── 深海ノ宮 (Deep Sea): light shafts from above, caustics and rising bubbles ──
+    const seaBlue = vec3(0.01, 0.05, 0.12);
+    this.layer(this.uSea, () => {
+      const q = uv() as N;
+      const p = P();
+      const depthK = smoothstep(0.0, 1.0, q.y) as N;
+      const shaftN = mx_noise_float(vec3(p.x.mul(3.0).add(p.y.mul(0.6)), t.mul(0.15), float(3.0)) as N).mul(0.5).add(0.5) as N;
+      const shafts = smoothstep(0.55, 0.95, shaftN).mul(depthK.mul(depthK)).mul(0.22) as N;
+      const ca = mx_noise_float(vec3(p.mul(7.0), t.mul(0.4)) as N) as N;
+      const caustic = smoothstep(0.02, 0.0, abs(ca)).mul(depthK).mul(0.12) as N;
+      const cols = float(30);
+      const cx = q.x.mul(cols) as N;
+      const col = floor(cx) as N;
+      const r1 = hash(col.add(5.0)) as N;
+      const r2 = hash(col.add(17.0)) as N;
+      const yy = fract(q.y.mul(0.7).sub(t.mul(r2.mul(0.08).add(0.03))).add(r1)) as N;
+      const xx = fract(cx).sub(0.5).add(sin(q.y.mul(14.0).add(t).add(r1.mul(6.0))).mul(0.15)) as N;
+      const bub = smoothstep(0.16, 0.12, length(vec2(xx, yy.sub(0.5).mul(cols.div(7.0)))) as N).mul(smoothstep(0.08, 0.12, length(vec2(xx, yy.sub(0.5).mul(cols.div(7.0)))) as N)).mul(step01(r1, 0.6)) as N;
+      return seaBlue.mul(depthK.mul(0.7).add(0.25)).add(cyan.mul(shafts.mul(0.6).add(caustic.mul(0.45)).add(bub.mul(0.35)))) as N;
+    });
+
+    // ── 雪月ノ庭 (Snow Garden): a pale moon and slow falling snow ──
+    this.layer(this.uSnow, () => {
+      const q = uv() as N;
+      const p = P();
+      const md = length(p.sub(vec2(0.46, 0.3))) as N;
+      const moonN = mx_noise_float(vec3(p.mul(14.0), float(2.0)) as N).mul(0.5).add(0.5) as N;
+      const moon = smoothstep(0.065, 0.06, md).mul(moonN.mul(0.15).add(0.3)).add(exp(md.mul(-14.0)).mul(0.1)) as N;
+      const snowAt = (scale: number, speed: number, seedOff: number) => {
+        const g = vec2(q.x.mul(scale), q.y.mul(scale).add(t.mul(speed))) as N;
+        const cell = floor(g) as N;
+        const r = hash(cell.x.add(cell.y.mul(57.0)).add(seedOff)) as N;
+        const f = fract(g).sub(vec2(r, fract(r.mul(13.0)))) as N;
+        return smoothstep(0.06, 0.0, length(f) as N).mul(step01(r, 0.5)) as N;
+      };
+      const flakes = snowAt(18, 0.35, 0).add(snowAt(30, 0.22, 7).mul(0.6)) as N;
+      const ground = smoothstep(0.22, 0.0, q.y).mul(0.08) as N;
+      return vec3(0.75, 0.85, 1.0).mul(moon.add(flakes.mul(0.55)).add(ground)).add(vec3(0.02, 0.03, 0.06)) as N;
+    });
+
+    // ── 雷鳴ノ峰 (Thunder Peak): rolling dark clouds lit from inside (no full-screen flashes) ──
+    this.layer(this.uThunder, () => {
+      const p = P();
+      const q = uv() as N;
+      const cl = mx_noise_float(vec3(p.mul(vec2(1.6, 3.0)).add(vec2(t.mul(0.05), 0)), t.mul(0.07)) as N).mul(0.5).add(0.5) as N;
+      const top = smoothstep(0.35, 1.0, q.y) as N;
+      // Internal glow: a slow pulse that moves around (local, gentle — not a flash).
+      const pulse = smoothstep(0.75, 1.0, sin(t.mul(0.9).add(p.x.mul(3.0))).mul(0.5).add(0.5)).mul(0.5) as N;
+      const glow = smoothstep(0.55, 0.85, cl).mul(top).mul(pulse.add(0.15)).mul(0.35) as N;
+      const ridge = smoothstep(0.005, 0.0, abs(q.y.sub(float(0.18).add(mx_noise_float(vec3(q.x.mul(4.0), float(1.3), float(0)) as N).mul(0.06))))).mul(0.08) as N;
+      return vec3(0.04, 0.03, 0.08).mul(cl.mul(top).mul(2.0)).add(amber.mul(glow)).add(cyan.mul(glow.mul(0.3))).add(amber.mul(ridge)) as N;
+    });
+
+    // ── 花霞ノ丘 (Petal Hill): pink haze and drifting petals ──
+    this.layer(this.uPetal, () => {
+      const q = uv() as N;
+      const p = P();
+      const haze = mx_noise_float(vec3(p.mul(1.5), t.mul(0.05)) as N).mul(0.5).add(0.5).mul(smoothstep(1.0, 0.2, q.y)).mul(0.12) as N;
+      const petalAt = (scale: number, speed: number, seedOff: number) => {
+        const g = vec2(q.x.mul(scale).add(t.mul(speed * 0.6)), q.y.mul(scale).add(t.mul(speed))) as N;
+        const cell = floor(g) as N;
+        const r = hash(cell.x.add(cell.y.mul(31.0)).add(seedOff)) as N;
+        const f = fract(g).sub(0.5) as N;
+        const a = r.mul(6.28).add(t.mul(r.add(0.5))) as N;
+        const rx = f.x.mul(cos(a)).sub(f.y.mul(sin(a))) as N;
+        const ry = f.x.mul(sin(a)).add(f.y.mul(cos(a))) as N;
+        return smoothstep(0.12, 0.08, length(vec2(rx.mul(1.0), ry.mul(2.2))) as N).mul(step01(r, 0.55)) as N;
+      };
+      const petals = petalAt(10, 0.25, 0).add(petalAt(17, 0.17, 3).mul(0.6)) as N;
+      return magL.mul(haze.add(petals.mul(0.35))).add(vec3(1.0, 0.8, 0.9).mul(petals.mul(0.08))) as N;
     });
 
     // Fold the weight and the cinematic darkening into each layer.

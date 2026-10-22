@@ -21,6 +21,10 @@ export interface TrackedHand {
   tip: Vec2;
   tipVel: Vec2;
   tipPred: Vec2;
+  /** Filtered velocity of every landmark (view units / s) — for display prediction. */
+  vel: Vec2[];
+  /** Capture time of these landmarks. */
+  t: number;
   /** ms since this slot appeared. */
   age: number;
 }
@@ -108,6 +112,7 @@ export class HandTracker {
         const q = s.filters[i]!.filter(p.x, p.y, t);
         return { x: q.x, y: q.y, z: p.z, v: p.v };
       });
+      const vel = s.filters.map((fl) => ({ x: fl.vx, y: fl.vy }));
       s.last = palmCentre(lm);
       const raw = o.lm[HL.indexTip]!;
       const tip = s.tipF.filter(raw.x, raw.y, t);
@@ -122,6 +127,8 @@ export class HandTracker {
         tip,
         tipVel,
         tipPred: { x: tip.x + tipVel.x * ph, y: tip.y + tipVel.y * ph },
+        vel,
+        t,
         age: t - s.born,
       };
     });

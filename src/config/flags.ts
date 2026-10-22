@@ -25,6 +25,8 @@ export interface Flags {
   worker: boolean;
   /** T2: take-home QR result card. */
   qr: boolean;
+  /** T2: shared ranking across booths (Cloudflare D1 via /api, same origin). Off = local ranking only. */
+  online: boolean;
 }
 
 export const DEFAULT_FLAGS: Flags = {
@@ -40,6 +42,7 @@ export const DEFAULT_FLAGS: Flags = {
   segmentation: false,
   worker: true,
   qr: false,
+  online: true,
 };
 
 export function parseFlags(query: string | null | undefined, base: Flags = DEFAULT_FLAGS): Flags {

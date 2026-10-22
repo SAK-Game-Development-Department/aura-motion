@@ -36,6 +36,8 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // The shared ranking API is always live (never cached).
+  if (url.pathname.startsWith('/api/')) return;
   event.respondWith(
     caches.match(req, { ignoreSearch: url.pathname.endsWith('/') || url.pathname.endsWith('.html') }).then(
       (hit) =>

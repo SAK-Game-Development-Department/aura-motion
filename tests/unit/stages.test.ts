@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateValidBattle, timeline, validateBattle } from '../../src/battle/stage';
-import { STAGE_IDS, STAGES } from '../../src/battle/stages';
+import { DIFFICULTY_IDS, STAGE_IDS, STAGES, stagesOf, type StageId } from '../../src/battle/stages';
 import { BattleSession } from '../../src/battle/session';
 import { battleBot } from '../../src/battle/bot';
 import { TECH } from '../../src/battle/techniques';
@@ -19,7 +19,7 @@ describe('stages by difficulty', () => {
           expect(s.stageId).toBe(stage);
           expect(validateBattle(s, base).ok).toBe(true);
           expect(s.enemies.some((e) => e.kind === 'lord'), `${stage} ${seed}`).toBe(true);
-          const tune = STAGE_TUNE[stage];
+          const tune = STAGE_TUNE[STAGES[stage].difficulty];
           if (tune.techniques !== 'all') for (const st of timeline(s)) expect(tune.techniques).toContain(st.tech);
         }
       }
@@ -27,23 +27,25 @@ describe('stages by difficulty', () => {
   });
 
   it('harder stages are denser, faster and have a longer boss chain', () => {
-    const avg = (stage: (typeof STAGE_IDS)[number], f: (s: ReturnType<typeof generateValidBattle>) => number) => {
+    // Averaged over every stage of a difficulty.
+    const avg = (diff: (typeof DIFFICULTY_IDS)[number], f: (s: ReturnType<typeof generateValidBattle>) => number) => {
       let sum = 0;
-      for (let seed = 1; seed <= 12; seed++) sum += f(generateValidBattle({ ...base, seed, stage }));
-      return sum / 12;
+      let n = 0;
+      for (const st of stagesOf(diff)) for (let seed = 1; seed <= 6; seed++, n++) sum += f(generateValidBattle({ ...base, seed, stage: st.id }));
+      return sum / n;
     };
     const steps = (s: ReturnType<typeof generateValidBattle>) => timeline(s).length;
     const chain = (s: ReturnType<typeof generateValidBattle>) => s.enemies.find((e) => e.kind === 'lord')!.steps.length;
     expect(avg('easy', steps)).toBeLessThan(avg('normal', steps));
     expect(avg('normal', steps)).toBeLessThan(avg('hard', steps));
     expect(avg('easy', chain)).toBeLessThan(avg('hard', chain));
-    expect(generateValidBattle({ ...base, seed: 3, stage: 'hard' }).approachMs).toBeLessThan(generateValidBattle({ ...base, seed: 3, stage: 'easy' }).approachMs);
+    expect(generateValidBattle({ ...base, seed: 3, stage: 'guren' }).approachMs).toBeLessThan(generateValidBattle({ ...base, seed: 3, stage: 'yoi' }).approachMs);
   });
 
   it('easy uses only the gentle techniques; hard uses sigils and many seals', () => {
-    const used = (stage: (typeof STAGE_IDS)[number]) => {
+    const used = (diff: (typeof DIFFICULTY_IDS)[number]) => {
       const set = new Set<string>();
-      for (let seed = 1; seed <= 20; seed++) for (const st of timeline(generateValidBattle({ ...base, seed, stage }))) set.add(st.tech);
+      for (const s of stagesOf(diff)) for (let seed = 1; seed <= 10; seed++) for (const st of timeline(generateValidBattle({ ...base, seed, stage: s.id }))) set.add(st.tech);
       return set;
     };
     for (const t of used('easy')) expect(['shape', 'motion', 'seal', 'sigil', 'spread']).toContain(TECH[t]!.req.kind);
@@ -71,12 +73,30 @@ describe('stages by difficulty', () => {
     }
   }, 120_000);
 
-  it('every stage has its own name, boss, look and backgrounds', () => {
-    const names = new Set(STAGE_IDS.map((s) => STAGES[s].name));
-    const bosses = new Set(STAGE_IDS.map((s) => STAGES[s].boss.name));
-    const styles = new Set(STAGE_IDS.map((s) => STAGES[s].style));
-    expect(names.size).toBe(3);
-    expect(bosses.size).toBe(3);
-    expect(styles.size).toBe(3);
+  it('three stages per difficulty, each with its own name, boss and look', () => {
+    for (const d of DIFFICULTY_IDS) expect(stagesOf(d)).toHaveLength(3);
+    expect(new Set(STAGE_IDS.map((s) => STAGES[s].name)).size).toBe(9);
+    expect(new Set(STAGE_IDS.map((s) => STAGES[s].boss.name)).size).toBe(9);
+    // Within a difficulty no two stages look alike (spirit look + decor + rim + main background).
+    for (const d of DIFFICULTY_IDS) {
+      const looks = stagesOf(d).map((s) => `${s.style}/${s.decor}/${s.rim}/${s.themes.intro}`);
+      expect(new Set(looks).size).toBe(3);
+    }
+  });
+
+  it("a stage's favoured technique kind shows up more", () => {
+    const share = (id: StageId, kind: string) => {
+      let k = 0;
+      let n = 0;
+      for (let seed = 1; seed <= 15; seed++)
+        for (const st of timeline(generateValidBattle({ ...base, seed, stage: id }))) {
+          const r = TECH[st.tech]!.req.kind;
+          if (r !== 'shape' && r !== 'motion') continue;
+          n++;
+          if (r === kind) k++;
+        }
+      return k / n;
+    };
+    expect(share('raimei', 'motion')).toBeGreaterThan(share('hoshi', 'motion'));
   });
 });

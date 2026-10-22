@@ -1,10 +1,11 @@
 // Spirits (enemies): dark shapes with a glowing rim, drawn with *normal*
 // blending so they read as holes of darkness in the light. Three looks, one
-// per stage: writhing shadow blobs, crisp crystals and licking flames.
+// per stage: writhing shadow blobs, crisp crystals, licking flames and
+// drifting jellyfish.
 // One instanced mesh; per-instance params drive shape, hurt flash and the
 // dissolve when defeated.
 import * as THREE from 'three/webgpu';
-import { abs, atan, cos, exp, float, instancedDynamicBufferAttribute, length, max, mix, mx_noise_float, sin, smoothstep, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { abs, atan, cos, exp, float, fract, instancedDynamicBufferAttribute, length, max, mix, mx_noise_float, sin, smoothstep, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type N = any;
@@ -31,8 +32,9 @@ export class EnemyBatch {
     const t = this.uTime;
     // Style (params.w): 0 shadow blob, 1 crystal, 2 flame. Weights pick the shape.
     const wC = smoothstep(0.5, 0.51, prm.w).mul(float(1).sub(smoothstep(1.5, 1.51, prm.w))) as N;
-    const wF = smoothstep(1.5, 1.51, prm.w) as N;
-    const wS = float(1).sub(wC).sub(wF) as N;
+    const wF = smoothstep(1.5, 1.51, prm.w).mul(float(1).sub(smoothstep(2.5, 2.51, prm.w))) as N;
+    const wJ = smoothstep(2.5, 2.51, prm.w) as N;
+    const wS = float(1).sub(wC).sub(wF).sub(wJ) as N;
     // Shadow: writhing edge — noise in space and time (each spirit has its own seed).
     const dS = length(p) as N;
     const n1 = mx_noise_float(vec3(p.mul(2.3), t.mul(0.9).add(prm.x)) as N) as N;
@@ -47,8 +49,17 @@ export class EnemyBatch {
     const dF = length(vec2(p.x.mul(float(1).add(up.mul(1.4))), p.y.mul(0.82).add(0.08)) as N) as N;
     const fn = mx_noise_float(vec3(p.x.mul(3.2), p.y.mul(2.2).sub(t.mul(2.6)), prm.x) as N) as N;
     const edgeF = float(0.56).add(fn.mul(0.2).mul(smoothstep(-0.3, 0.9, p.y))).add(n2.mul(0.04)) as N;
-    const d = dS.mul(wS).add(dC.mul(wC)).add(dF.mul(wF)) as N;
-    const edge = edgeS.mul(wS).add(edgeC.mul(wC)).add(edgeF.mul(wF)) as N;
+    // Jellyfish: a bell with a rippling skirt; tentacles sway below it.
+    const skirt = float(-0.16).add(sin(p.x.mul(14.0).add(t.mul(3.0)).add(prm.x)).mul(0.045)) as N;
+    const bellK = float(1).add(sin(t.mul(2.2).add(prm.x)).mul(0.04)) as N; // pulsing
+    const dJ0 = length(vec2(p.x.div(bellK.mul(0.64)), p.y.sub(0.08).div(0.52)) as N).mul(0.6) as N;
+    const belowSkirt = smoothstep(skirt, skirt.sub(0.03), p.y) as N;
+    const dJ = dJ0.add(belowSkirt.mul(2.0)) as N;
+    const edgeJ = float(0.6).add(n2.mul(0.015)) as N;
+    const tx = fract(p.x.mul(4.2).add(sin(p.y.mul(6.0).add(t.mul(2.0)).add(prm.x)).mul(0.22))).sub(0.5) as N;
+    const tent = smoothstep(0.09, 0.0, abs(tx)).mul(belowSkirt).mul(smoothstep(-0.95, -0.35, p.y)).mul(smoothstep(0.52, 0.4, abs(p.x))).mul(wJ) as N;
+    const d = dS.mul(wS).add(dC.mul(wC)).add(dF.mul(wF)).add(dJ.mul(wJ)) as N;
+    const edge = edgeS.mul(wS).add(edgeC.mul(wC)).add(edgeF.mul(wF)).add(edgeJ.mul(wJ)) as N;
     const soft = float(0.07).sub(wC.mul(0.055)) as N; // crystals are crisp
     const body = smoothstep(edge, edge.sub(soft), d) as N;
     // Dissolve: noise threshold eats the body from the inside, with a burning rim.
@@ -65,12 +76,15 @@ export class EnemyBatch {
     // Flame: a hot core low in the body, dark crimson above.
     const core = smoothstep(0.55, 0.0, length(p.sub(vec2(0, -0.2)))).mul(0.35) as N;
     const darkF = mix(vec3(0.03, 0.004, 0.004), vec3(0.12, 0.02, 0.0), inner).add(rimc.xyz.mul(core)) as N;
-    const darkBody = darkS.mul(wS).add(darkC.mul(wC)).add(darkF.mul(wF)) as N;
+    // Jellyfish: translucent, a glowing inner band under the bell.
+    const band = smoothstep(0.1, 0.0, abs(p.y.add(0.02).sub(dJ0.mul(0.25)))).mul(0.25) as N;
+    const darkJ = vec3(0.01, 0.02, 0.05).add(rimc.xyz.mul(band.add(inner.mul(0.1)))) as N;
+    const darkBody = darkS.mul(wS).add(darkC.mul(wC)).add(darkF.mul(wF)).add(darkJ.mul(wJ)) as N;
     const hurt = prm.y as N;
     const col = darkBody
-      .add(rimc.xyz.mul(rimGlow.add(burn.mul(2.5))))
+      .add(rimc.xyz.mul(rimGlow.add(burn.mul(2.5)).add(tent.mul(0.9))))
       .add(vec3(1.0, 0.9, 1.0).mul(hurt.mul(body).mul(0.6))) as N;
-    const a = max(body.mul(alive), rimGlow.mul(0.85).add(burn)).mul(rimc.w).mul(smoothstep(1.0, 0.92, d)) as N;
+    const a = max(max(body.mul(alive).mul(float(1).sub(wJ.mul(0.25))), rimGlow.mul(0.85).add(burn)).mul(smoothstep(1.0, 0.92, d)), tent.mul(alive).mul(0.8)).mul(rimc.w) as N;
     mat.colorNode = vec4(col, 1);
     mat.opacityNode = a;
     this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mat, capacity);
@@ -83,7 +97,7 @@ export class EnemyBatch {
     this.n = 0;
   }
 
-  /** Add a spirit at world (x, y), size (world units), rim colour, alpha, seed, hurt 0..1, dissolve 0..1, style (0 shadow, 1 crystal, 2 flame). */
+  /** Add a spirit at world (x, y), size (world units), rim colour, alpha, seed, hurt 0..1, dissolve 0..1, style (0 shadow, 1 crystal, 2 flame, 3 jellyfish). */
   add(x: number, y: number, size: number, rgb: readonly [number, number, number], alpha: number, seed: number, hurt: number, dissolve: number, style = 0): void {
     if (this.n >= this.capacity) return;
     const i = this.n++;

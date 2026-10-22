@@ -6,7 +6,7 @@ import { clamp, ease, lerp } from '../core/math';
 import { HAND_BONES, type Vec2 } from '../core/types';
 import type { BattleEvent, BattleSession, ActiveEnemy } from '../battle/session';
 import type { Enemy } from '../battle/stage';
-import { HIDDEN_BOSS, STAGES, type EnemyStyle } from '../battle/stages';
+import { FINISH, FINISH_HIDDEN, HIDDEN_BOSS, STAGES, type EnemyStyle, type RimColor, type StageDef } from '../battle/stages';
 import { reqLabel, type Hue, type Req, type Technique } from '../battle/techniques';
 import type { GestureFrame } from '../gesture/engine';
 import { buildHand, defaultHand, sealHands, withShape } from '../gesture/handModel';
@@ -19,13 +19,15 @@ import { C, type WorldView } from './world';
 type RGB = readonly [number, number, number];
 const HUE: Record<Hue, RGB> = { cyan: C.cyan, magenta: C.magenta, amber: C.amber };
 
-const STYLE_INDEX: Record<EnemyStyle, number> = { shade: 0, crystal: 1, flame: 2 };
-/** Rim colour per stage look and enemy kind (the kind stays readable within a stage). */
-const RIM: Record<EnemyStyle, Record<Enemy['kind'], RGB>> = {
-  shade: { wisp: C.magenta, warden: C.cyan, striker: C.magenta, breaker: C.amber, lord: C.magenta, eclipse: C.white },
-  crystal: { wisp: C.cyan, warden: C.white, striker: C.cyan, breaker: C.amber, lord: C.cyan, eclipse: C.white },
-  flame: { wisp: C.vermilion, warden: C.magenta, striker: C.vermilion, breaker: C.amber, lord: C.vermilion, eclipse: C.white },
-};
+const STYLE_INDEX: Record<EnemyStyle, number> = { shade: 0, crystal: 1, flame: 2, jelly: 3 };
+const RIM_RGB: Record<RimColor, RGB> = { cyan: C.cyan, magenta: C.magenta, amber: C.amber, white: C.white, vermilion: C.vermilion };
+/** Rim colour per stage and enemy kind (the kind stays readable within a stage). */
+function rimOf(def: StageDef, kind: Enemy['kind']): RGB {
+  if (kind === 'eclipse') return C.white;
+  if (kind === 'warden') return RIM_RGB[def.rimWarden];
+  if (kind === 'breaker') return def.rim === 'amber' || def.rimWarden === 'amber' ? C.white : C.amber;
+  return RIM_RGB[def.rim];
+}
 
 const BASE_SIZE: Record<Enemy['kind'], number> = { wisp: 0.075, warden: 0.095, striker: 0.085, breaker: 0.12, lord: 0.22, eclipse: 0.26 };
 
@@ -144,14 +146,14 @@ export class BattleView {
         this.world.shake.kick(0.5);
       } else if (e.type === 'hiddenBoss') {
         // Space cracks open; the void storm rolls in.
-        ui.cutin = { title: HIDDEN_BOSS.name, reading: `隠し主　${HIDDEN_BOSS.reading}`, hue: 'magenta', big: true };
+        ui.cutin = { title: HIDDEN_BOSS.name, reading: HIDDEN_BOSS.reading, hue: 'magenta', big: true };
         this.fx.push({ kind: 'crack', t0: now, dur: 3400, from: { x: 0.5, y: 0.35 }, to: { x: 0.5, y: 0.35 }, rgb: C.magenta, seed: e.t, big: 1 });
         this.dimUntil = now + 2600;
         this.world.holdTime(now, 500);
         this.world.punch(1, 1);
         this.world.shockwave({ x: 0.5, y: 0.35 }, 1);
       } else if (e.type === 'ultimate' && e.hidden) {
-        ui.cutin = { title: '極光天穿', reading: 'きょっこう てんせん', hue: 'cyan', big: true };
+        ui.cutin = { title: FINISH_HIDDEN.name, reading: FINISH_HIDDEN.reading, hue: 'cyan', big: true };
         this.domainT0 = now;
         this.domainUntil = now + 3600;
         this.dimUntil = now + 3600;
@@ -159,7 +161,7 @@ export class BattleView {
         this.fx.push({ kind: 'ultimate', t0: now, dur: 3400, from: { x: 0.5, y: 0.5 }, to: { x: 0.5, y: 0.3 }, rgb: C.cyan, seed: e.t, big: 1.3 });
         this.world.flash.request(now, 0.8);
       } else if (e.type === 'ultimate') {
-        ui.cutin = { title: '天輪結界', reading: 'てんりんけっかい', hue: 'amber', big: true };
+        ui.cutin = { title: FINISH.name, reading: FINISH.reading, hue: 'amber', big: true };
         this.domainT0 = now;
         this.domainUntil = now + 3200;
         this.dimUntil = now + 3200;
@@ -199,11 +201,12 @@ export class BattleView {
     this.enemies.uTime.value = now / 1000;
 
     this.enemies.begin();
-    const look: EnemyStyle = STAGES[s.stage.stageId ?? 'normal'].style;
+    const def = STAGES[s.stage.stageId] ?? STAGES.hoshi;
+    const look: EnemyStyle = def.style;
     for (const a of s.enemies) {
       const p = this.enemyPos(a, gt);
       const style: EnemyStyle = a.e.kind === 'eclipse' ? 'shade' : look;
-      const rim = RIM[style][a.e.kind];
+      const rim = rimOf(def, a.e.kind);
       if (!this.seen.has(a.e.id)) {
         // Entrance: a rift tears open where the spirit emerges.
         this.seen.add(a.e.id);
@@ -234,10 +237,14 @@ export class BattleView {
           const hy = w.y + R0 * 0.75;
           g.line(hx, hy, hx + ex * k * 0.5, hy + R0 * 0.55, 0.004 * L.k, rim, 1.2);
         }
+      } else if (style === 'jelly') {
+        // Two small calm eyes inside the bell.
+        for (const k of [-1, 1]) g.add(Shape.Disk, w.x + ex * k * 0.6, w.y + R0 * 0.18, eyeR * 0.7, eyeR * 0.7 * blink, 0, a.e.kind === 'lord' ? C.amber : C.white, 1.2);
       } else {
         const eyes = a.e.kind === 'lord' ? [-1.2, -0.4, 0.4, 1.2] : a.e.kind === 'eclipse' ? [-1.5, -0.75, 0, 0.75, 1.5] : [-1, 1];
         for (const k of eyes) g.add(Shape.Disk, w.x + ex * k * 0.8, w.y + R0 * 0.12 - (a.e.kind === 'eclipse' ? Math.abs(k) * ex * 0.15 : 0), eyeR, eyeR * blink, 0, a.e.kind === 'lord' ? C.amber : a.e.kind === 'eclipse' ? C.cyan : C.white, 1.3);
       }
+      if (a.e.kind !== 'eclipse') this.drawDecor(g, def.decor, w, R0, now, a.e.id, rim);
       if (style === 'flame') {
         // Embers rising off flame spirits.
         const u = ((now / 900 + a.e.id * 0.37) % 1 + 1) % 1;
@@ -302,7 +309,7 @@ export class BattleView {
     }
   }
 
-  /** Each stage's boss has its own crown: rings (夜ノ主), hexagon frames (星喰ノ番人), a flame crown (緋焔ノ王). */
+  /** Each stage's boss has its own crown: rings, hexagon frames, a flame crown, trailing tentacles. */
   private drawLord(g: GlyphBatch, style: EnemyStyle, w: Vec2, R: number, gt: number, now: number, rim: RGB): void {
     const L = this.gfx.layout;
     if (style === 'crystal') {
@@ -322,11 +329,57 @@ export class BattleView {
         g.line(w.x + Math.cos(ang) * r0, w.y + Math.sin(ang) * r0, w.x + Math.cos(ang) * r1, w.y + Math.sin(ang) * r1, 0.006 * L.k, i % 2 ? C.amber : rim, 1.3);
       }
       g.add(Shape.Ring, w.x, w.y, R * 3.4, R * 3.4, gt / 700, rim, 0.7, 0.95, 50);
+    } else if (style === 'jelly') {
+      // A crown of long trailing tentacles and a slow pulsing halo.
+      for (let i = 0; i < 10; i++) {
+        const x0 = w.x + (i - 4.5) * R * 0.32;
+        let px = x0;
+        let py = w.y - R * 0.6;
+        for (let j = 1; j <= 6; j++) {
+          const nx = x0 + Math.sin(gt / 420 + i + j * 0.7) * R * 0.18 * j * 0.4;
+          const ny = w.y - R * (0.6 + j * 0.42);
+          g.line(px, py, nx, ny, 0.004 * L.k * (1 - j * 0.1), rim, 1.1 * (1 - j * 0.12));
+          px = nx;
+          py = ny;
+        }
+      }
+      const pr = R * (2.6 + 0.15 * Math.sin(gt / 500));
+      g.add(Shape.Ring, w.x, w.y + R * 0.2, pr, pr * 0.8, 0, rim, 0.6, 0.96, 50);
     } else {
       for (let i = 0; i < 3; i++) {
         const rr = R * (3.2 + i * 0.5);
         g.add(Shape.Ring, w.x, w.y, rr, rr * 0.35, (gt / 1600) * (i % 2 ? -1 : 1) + i, rim, 0.6, 0.96, 50);
       }
+    }
+  }
+
+  /** Stage ornaments around a spirit: crackling arcs, drifting petals or snowflakes. */
+  private drawDecor(g: GlyphBatch, decor: StageDef['decor'], w: Vec2, R: number, now: number, id: number, rim: RGB): void {
+    if (decor === 'none') return;
+    const L = this.gfx.layout;
+    if (decor === 'arcs') {
+      // A short zig-zag arc that jumps around the body every ~120 ms.
+      const k = Math.floor(now / 120) + id * 7;
+      const a0 = ((k * 2.399) % 6.283) + 0.0;
+      let px = w.x + Math.cos(a0) * R * 1.05;
+      let py = w.y + Math.sin(a0) * R * 1.05;
+      for (let j = 1; j <= 4; j++) {
+        const ang = a0 + j * 0.28;
+        const rr = R * (1.05 + ((k * 13 + j * 7) % 5) * 0.08);
+        const nx = w.x + Math.cos(ang) * rr;
+        const ny = w.y + Math.sin(ang) * rr;
+        g.line(px, py, nx, ny, 0.003 * L.k, j % 2 ? C.white : rim, 1.5);
+        px = nx;
+        py = ny;
+      }
+      return;
+    }
+    for (let i = 0; i < 4; i++) {
+      const u = ((now / (decor === 'snow' ? 2400 : 1700) + i * 0.25 + id * 0.13) % 1 + 1) % 1;
+      const x = w.x + Math.sin(i * 2.1 + id + now / 700) * R * 1.4;
+      const y = w.y + R * (1.3 - u * 2.6);
+      const sz = R * (decor === 'snow' ? 0.06 : 0.09);
+      g.add(Shape.Disk, x, y, sz, decor === 'snow' ? sz : sz * 0.55, now / 400 + i, decor === 'snow' ? C.white : C.magenta, 0.9 * Math.sin(u * Math.PI));
     }
   }
 

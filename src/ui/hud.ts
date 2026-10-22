@@ -14,20 +14,23 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): 
 export type Screen = 'loading' | 'title' | 'select' | 'calibrate' | 'play' | 'results' | 'error';
 
 export interface SelectCard {
-  level: string;
-  levelEn: string;
+  /** Small header (level) and its English line. */
+  top: string;
+  topSub: string;
   stars: number;
-  name: string;
-  reading: string;
+  /** Big title and its reading / sub line. */
+  title: string;
+  sub: string;
   desc: string;
-  boss: string;
+  /** Line near the bottom (boss / stage list). */
+  foot: string;
   best: number;
   hue: 'cyan' | 'magenta' | 'amber' | 'vermilion';
 }
 
 const SECTION_ICON: Record<string, string> = { intro: '●', flow: '≈', wall: '⌂', dodge: '⇅', finale: '✦', tap: '●', trace: '〰', shape: '✋', pinch: '◉' };
 const SECTION_NAME: Record<string, string> = {
-  intro: '開幕', rush: '群れ', guard: '守り', boss: '主', hidden: '隠し',
+  intro: '序盤', rush: 'ラッシュ', guard: '防御', boss: 'ボス', hidden: '隠しボス',
 };
 
 // Open-hand outline (palm toward the camera) for the placement guide.
@@ -55,6 +58,8 @@ export class Hud {
   private calibDots: HTMLElement;
   private resEl: HTMLElement;
   private rankingEl: HTMLElement;
+  private localRankEl: HTMLElement;
+  private onlineEl: HTMLElement;
   private qrEl: HTMLElement;
   private cutinEl: HTMLElement;
   private hurtEl: HTMLElement;
@@ -70,6 +75,7 @@ export class Hud {
   private sectionKinds: string[] = [];
   private cards: HTMLElement[] = [];
   private selCursor: HTMLElement;
+  private selHead: HTMLElement;
   private selHover = -2;
 
   constructor(parent: HTMLElement) {
@@ -84,7 +90,7 @@ export class Hud {
     this.layers = { loading: mk('loading'), title: mk('title'), select: mk('select'), calibrate: mk('calibrate'), play: mk('play'), results: mk('results'), error: mk('error') };
 
     // Shared privacy notice (title + loading + error).
-    const privacy = '<b>映像は端末の外に出ず、保存されません。</b>&nbsp;カメラは手の形と動きの推定だけに使います（顔の認識・識別はしません）。';
+    const privacy = '<b>映像は端末の外に出ず、保存されません。</b>&nbsp;カメラは手の形と動きの推定だけに使います（顔の認識・識別はしません）。全国ランキングに送るのはスコアと自動のニックネームだけです。';
     for (const s of ['loading', 'title', 'error'] as const) this.layers[s].appendChild(h('div', 'privacy', privacy));
 
     // Loading
@@ -120,7 +126,8 @@ export class Hud {
     }
 
     // Stage selection (cards are filled by setSelect)
-    this.layers.select.appendChild(h('div', 'sel-head glow-c', '難易度を選ぶ'));
+    this.selHead = h('div', 'sel-head glow-c', '難易度を選ぶ');
+    this.layers.select.appendChild(this.selHead);
     this.layers.select.appendChild(h('div', 'sel-sub', '選びたいカードの前に手をかざして、そのまま止める'));
     this.selCursor = h('div', 'sel-cursor');
     this.layers.select.appendChild(this.selCursor);
@@ -157,6 +164,9 @@ export class Hud {
     // Results
     this.resEl = h('div', 'res');
     this.rankingEl = h('div', 'ranking');
+    this.localRankEl = h('div', 'local');
+    this.onlineEl = h('div', 'online');
+    this.rankingEl.append(this.localRankEl, this.onlineEl);
     this.qrEl = h('div', 'qr');
     this.layers.results.append(this.resEl, this.rankingEl, this.qrEl);
 
@@ -201,15 +211,16 @@ export class Hud {
   }
 
   // ── stage selection ──
-  setSelect(cards: SelectCard[]): void {
+  setSelect(heading: string, cards: SelectCard[]): void {
+    this.selHead.textContent = heading;
     for (const c of this.cards) c.remove();
     this.cards = cards.map((c) => {
       const el = h(
         'div',
         `sel-card hue-${c.hue}`,
-        `<div class="prog"></div><div class="lv">${c.level}<small>${c.levelEn}</small></div><div class="stars">${'★'.repeat(c.stars)}${'☆'.repeat(3 - c.stars)}</div>` +
-          `<div class="nm">${c.name}</div><div class="rd">${c.reading}</div><div class="ds">${c.desc}</div>` +
-          `<div class="boss">主　${c.boss}</div><div class="best">本日の最高 <b>${c.best > 0 ? c.best.toLocaleString('ja-JP') : '―'}</b></div>`,
+        `<div class="prog"></div><div class="lv">${c.top}<small>${c.topSub}</small></div><div class="stars">${'★'.repeat(c.stars)}${'☆'.repeat(3 - c.stars)}</div>` +
+          `<div class="nm">${c.title}</div><div class="rd">${c.sub}</div><div class="ds">${c.desc}</div>` +
+          `<div class="boss">${c.foot}</div><div class="best">この端末の本日最高 <b>${c.best > 0 ? c.best.toLocaleString('ja-JP') : '―'}</b></div>`,
       );
       this.layers.select.appendChild(el);
       return el;
@@ -401,13 +412,33 @@ export class Hud {
       <div class="nick">${r.nick}</div>
       ${r.isBest ? '<div class="newbest">本日のベスト！</div>' : ''}`;
     this.qrEl.innerHTML = r.qrSvg ? `${r.qrSvg}<div>スマホで読み取ると<br>記録カードを持ち帰れます</div>` : '';
-    this.rankingEl.innerHTML = `<h3>RANKING${r.stage ? ` <small>${r.stage}</small>` : ''}</h3><ol>${r.ranking
-      .slice(0, 7)
+    this.onlineEl.innerHTML = '';
+    this.localRankEl.innerHTML = `<h3>この端末${r.stage ? ` <small>${r.stage}</small>` : ''}</h3><ol>${r.ranking
+      .slice(0, 5)
       .map((e, i) => `<li class="${i === r.placed ? 'me' : ''}"><span>${i + 1}. ${escapeHtml(e.name)}</span><span>${e.score.toLocaleString('ja-JP')}</span></li>`)
       .join('')}</ol>`;
   }
 
   // ── error ──
+  /** Shared (nationwide) ranking on the results screen; filled in when the server answers. */
+  setOnline(o: { state: 'loading' | 'ok' | 'offline'; level: string; list?: Array<{ name: string; score: number; region: string; stageName: string }>; me?: { name: string; score: number }; place?: { placeToday: number; placeAll: number; total: number } | null }): void {
+    if (o.state === 'offline') {
+      this.onlineEl.innerHTML = `<h3>全国ランキング</h3><p class="off">オフライン（この端末の記録のみ）</p>`;
+      return;
+    }
+    if (o.state === 'loading') {
+      this.onlineEl.innerHTML = `<h3>全国ランキング</h3><p class="off">送信中…</p>`;
+      return;
+    }
+    const mine = (e: { name: string; score: number }) => !!o.me && e.name === o.me.name && e.score === o.me.score;
+    const place = o.place ? `<p class="place">本日 <b>${o.place.placeToday}</b> 位　累計 <b>${o.place.placeAll}</b> 位 <small>/ ${o.place.total.toLocaleString('ja-JP')} 件</small></p>` : '';
+    const empty = !o.list?.length ? '<p class="off">本日の記録はまだありません</p>' : '';
+    this.onlineEl.innerHTML = `<h3>全国ランキング <small>${o.level}・本日</small></h3>${place}${empty}<ol>${(o.list ?? [])
+      .slice(0, 5)
+      .map((e, i) => `<li class="${mine(e) ? 'me' : ''}"><span>${i + 1}. ${escapeHtml(e.name)}<em>${escapeHtml(e.region || '―')}・${escapeHtml(e.stageName)}</em></span><span>${e.score.toLocaleString('ja-JP')}</span></li>`)
+      .join('')}</ol>`;
+  }
+
   setError(title: string, lines: string[], staff?: string): void {
     this.errEl.innerHTML = `<h2>${escapeHtml(title)}</h2>${lines.map((l) => `<p>${l}</p>`).join('')}${staff ? `<div class="staffnote">${escapeHtml(staff)}</div>` : ''}`;
   }

@@ -53,4 +53,15 @@ export const GESTURE = {
   sigilAccept: 0.75,
   sigilMargin: 0.05,
   sigilEndStillMs: 260,
+  /** Two-hand seals (印). */
+  seal: {
+    holdMs: 280,
+    threshold: 0.7,
+    /** While the game waits for a seal ("assist"): lower bar, shorter hold, loose per-hand shapes, more distance slack. */
+    assistThreshold: 0.45,
+    assistHoldMs: 170,
+    assistDistance: 1.35,
+    /** One hand vanishing for this long (pressed hands occlude each other) does not break a forming seal. */
+    occlusionMs: 300,
+  },
 } as const;

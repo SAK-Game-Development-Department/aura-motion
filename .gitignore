@@ -8,3 +8,4 @@ public/mediapipe/wasm/
 .DS_Store
 soak-out/
 dist-lab/
+.wrangler/

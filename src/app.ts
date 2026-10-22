@@ -36,13 +36,17 @@ import { TechLens } from './ui/techLens';
 import { battleBot } from './battle/bot';
 import { BattleSession, type BattleEvent } from './battle/session';
 import { generateValidBattle, type BattleStage } from './battle/stage';
-import { HIDDEN_BOSS, STAGES, STAGE_IDS, type StageId } from './battle/stages';
+import { DIFFICULTIES, DIFFICULTY_IDS, FINISH, HIDDEN_BOSS, STAGES, stagesOf, type StageDef, type StageId } from './battle/stages';
+import type { DifficultyId } from './config';
 import { StageSelector } from './exhibit/stageSelect';
+import { OnlineRanking } from './exhibit/online';
+import { SUBMISSION_KEYS, type Diff, type ScoreSubmission } from './exhibit/scorePolicy';
 import { BattleView, type UiRequest } from './render/battleView';
 import { hash32 } from './core/rng';
 import { nickname } from './exhibit/nickname';
 import { rankOf, multiplier } from './game/score';
 import { sealHands, type ShapeId } from './gesture/handModel';
+import type { SealKind } from './gesture/seals';
 import type { Vec2 } from './core/types';
 
 type Phase = 'loading' | 'title' | 'select' | 'calibrate' | 'practice' | 'play' | 'results' | 'error';
@@ -101,11 +105,20 @@ export class App {
   private battle: BattleSession | null = null;
   private bstage: BattleStage | null = null;
   /** Chosen stage (difficulty). */
-  private stageId: StageId = 'normal';
+  private stageId: StageId = 'hoshi';
   private selector: StageSelector | null = null;
+  /** Selection in two steps: difficulty, then one of its stages. */
+  private selectStep: 'difficulty' | 'stage' = 'difficulty';
+  private selectDiff: DifficultyId = 'normal';
+  private online!: OnlineRanking;
+  /** Play token for the shared ranking (null = offline or not a camera play). */
+  private runToken: string | null = null;
+  private playId = 0;
+  private lastBoardsAt = -1e9;
   private demoCount = 0;
   /** Autoplay: stage the bot picks next (normal → hard → easy …). */
   private botVisits = 0;
+  private sealSet = new Set<SealKind>();
   private playStart = 0;
   private sectionIdx = -1;
   private requireNewVisitor = false;
@@ -142,6 +155,7 @@ export class App {
     this.hud.setLoading(0.02, '画面を準備中…');
     this.debug = new DebugOverlay(document.body);
     this.lens = new TechLens(document.body);
+    this.online = new OnlineRanking(this.rt.flags.online);
     if (this.rt.debug) this.debug.toggle(true);
 
     this.gfx = await Gfx.create(this.canvas, { forceWebGL: this.rt.forceWebGL });
@@ -309,6 +323,7 @@ export class App {
     this.phase = p;
     if (this.world && p !== 'select') this.world.theme = p === 'results' ? 'stars' : p === 'play' || p === 'calibrate' ? STAGES[this.stageId].themes.intro : 'lake';
     this.phaseAt = this.clock();
+    if (p !== 'play') this.engine.expectSeals = new Set();
     this.hud.show(p === 'practice' ? 'play' : p);
     if (p !== 'play') this.hud.setMarks([]);
     if (p !== 'title') this.stopDemo();
@@ -319,22 +334,51 @@ export class App {
     this.botScript();
   }
 
-  /** Stage selection (skipped in practice mode or when the staff fixed the stage). */
+  /** Stage selection: difficulty, then stage (skipped in practice mode or when the staff fixed it with ?stage=). */
   private startSelect(now: number): void {
-    if (this.rt.practice || this.rt.stage) {
-      if (this.rt.stage) this.stageId = this.rt.stage;
+    const fixed = this.rt.stage;
+    if (this.rt.practice || (fixed && fixed in STAGES)) {
+      if (fixed && fixed in STAGES) this.stageId = fixed as StageId;
       this.startCalibration(now);
       return;
     }
+    if (fixed && (DIFFICULTY_IDS as readonly string[]).includes(fixed)) this.openStageStep(now, fixed as DifficultyId);
+    else this.openDifficultyStep(now);
+    this.setPhase('select');
+  }
+
+  private bestToday(f: { diff?: string; stage?: string }): number {
+    return this.scores.today(Date.now(), f).reduce((m, e) => Math.max(m, e.score), 0);
+  }
+
+  private openDifficultyStep(now: number): void {
+    this.selectStep = 'difficulty';
     this.selector = new StageSelector(now, this.rt.selectHoldMs);
-    const hue = { easy: 'magenta', normal: 'cyan', hard: 'vermilion' } as const;
     this.hud.setSelect(
-      STAGE_IDS.map((id) => {
-        const d = STAGES[id];
-        return { level: d.level, levelEn: d.levelEn, stars: d.stars, name: d.name, reading: d.reading, desc: d.desc, boss: d.boss.name, best: this.scores.today(Date.now(), id).reduce((m, e) => Math.max(m, e.score), 0), hue: hue[id] };
+      '難易度を選ぶ',
+      DIFFICULTY_IDS.map((id) => {
+        const d = DIFFICULTIES[id];
+        const top = this.online.board(id, 'today')?.list[0];
+        return { top: d.level, topSub: d.levelEn, stars: d.stars, title: d.level, sub: d.levelEn, desc: d.desc, foot: top ? `全国 本日1位　${top.score.toLocaleString('ja-JP')}（${top.region || '―'}）` : stagesOf(id).map((s) => s.name).join('・'), best: this.bestToday({ diff: id }), hue: d.hue };
       }),
     );
-    this.setPhase('select');
+  }
+
+  private openStageStep(now: number, diff: DifficultyId): void {
+    this.selectStep = 'stage';
+    this.selectDiff = diff;
+    // Shorter grace: the hand is already up from the first step.
+    this.selector = new StageSelector(now, this.rt.selectHoldMs);
+    const d = DIFFICULTIES[diff];
+    this.hud.setSelect(
+      `${d.level}　ステージを選ぶ`,
+      stagesOf(diff).map((s) => ({ top: d.level, topSub: d.levelEn, stars: d.stars, title: s.name, sub: s.reading, desc: s.desc, foot: `ボス　${s.boss.name}`, best: this.bestToday({ stage: s.id }), hue: d.hue })),
+    );
+  }
+
+  /** Cards on screen in the current selection step. */
+  private selectOptions(): StageDef[] | null {
+    return this.selectStep === 'stage' ? stagesOf(this.selectDiff) : null;
   }
 
   private startCalibration(now: number): void {
@@ -394,6 +438,10 @@ export class App {
     this.battle = new BattleSession({ stage: this.bstage, dda: f.dda, oneHand: this.rt.oneHand, twoHandOk, windowScale: () => (this.unstable ? JUDGE.unstableWindowScale : 1) });
     this.playStart = now;
     this.sectionIdx = -1;
+    // Shared ranking: only real camera plays submit (bots, mouse mode and tests never pollute it).
+    const id = ++this.playId;
+    this.runToken = null;
+    if (this.canSubmit()) void this.online.startRun(this.stageId).then((t) => id === this.playId && (this.runToken = t));
     this.world.reset();
     this.battleView.reset();
     this.hud.setSections(this.bstage.sections.map((s) => s.kind));
@@ -407,8 +455,9 @@ export class App {
     const sc = b.score;
     const nick = nickname(hash32(b.stage.seed ^ sc.score));
     const def = STAGES[b.stage.stageId];
-    const entry = { score: sc.score, name: nick, rank: rankOf(sc), at: Date.now(), seated: false, stage: def.id };
-    const todayBest = this.scores.today(Date.now(), def.id).reduce((m, e) => Math.max(m, e.score), 0);
+    const lv = DIFFICULTIES[def.difficulty];
+    const entry = { score: sc.score, name: nick, rank: rankOf(sc), at: Date.now(), seated: false, stage: def.id, diff: def.difficulty, stageName: def.name };
+    const todayBest = this.bestToday({ diff: def.difficulty });
     this.resultsPlaced = this.scores.add(entry);
     this.hud.setResults({
       score: sc.score,
@@ -417,15 +466,43 @@ export class App {
       counts: sc.counts,
       nick,
       placed: this.resultsPlaced,
-      ranking: this.scores.list(def.id),
-      stage: `${def.level}「${def.name}」`,
+      ranking: this.scores.list({ diff: def.difficulty }),
+      stage: `${lv.level}「${def.name}」`,
       flow: 0,
       isBest: sc.score > todayBest && sc.score > 0,
-      extra: `<span>撃破 <b>${b.kills}</b></span>${b.ultimates - (b.hiddenCleared ? 1 : 0) > 0 ? `<span>奥義<b>天輪結界</b>成功</span>` : `<span>${def.boss.name}を逃した</span>`}${b.hiddenCleared ? `<span>隠し主<b>${HIDDEN_BOSS.name}</b>撃破！</span>` : ''}`,
+      extra: `<span>撃破 <b>${b.kills}</b></span>${b.ultimates - (b.hiddenCleared ? 1 : 0) > 0 ? `<span><b>${FINISH.name}</b>成功</span>` : `<span>${def.boss.name}を逃した</span>`}${b.hiddenCleared ? `<span>隠しボス<b>${HIDDEN_BOSS.name}</b>撃破！</span>` : ''}`,
     });
     this.hud.setMarks([]);
     this.setPhase('results');
     this.requireNewVisitor = true;
+    void this.submitOnline(b, nick, entry.rank);
+  }
+
+  private canSubmit(): boolean {
+    return this.online.enabled && (this.source instanceof CameraSource || this.rt.onlineTest);
+  }
+
+  /** Submit the play to the shared ranking and show where it placed (never blocks the results). */
+  private async submitOnline(b: BattleSession, nick: string, rank: string): Promise<void> {
+    const def = STAGES[b.stage.stageId];
+    const lv = DIFFICULTIES[def.difficulty].level;
+    const diff = def.difficulty as Diff;
+    const sc = b.score;
+    const token = this.runToken;
+    this.runToken = null;
+    const id = this.playId;
+    let place = null;
+    if (token && this.canSubmit()) {
+      this.hud.setOnline({ state: 'loading', level: lv });
+      const sub: ScoreSubmission = { token, stage: def.id, score: sc.score, rank, name: nick, maxCombo: sc.maxCombo, perfect: sc.counts.perfect, good: sc.counts.good, miss: sc.counts.miss, device: OnlineRanking.deviceId() };
+      // Only the fields in SUBMISSION_KEYS leave the device.
+      const clean = Object.fromEntries(SUBMISSION_KEYS.map((k) => [k, sub[k]])) as unknown as ScoreSubmission;
+      place = await this.online.submit(clean);
+    }
+    const board = await this.online.refresh(diff, 'today', place ? 0 : 30_000);
+    if (id !== this.playId || this.phase !== 'results') return;
+    if (!board) this.hud.setOnline({ state: 'offline', level: lv });
+    else this.hud.setOnline({ state: 'ok', level: lv, list: board.list, me: { name: nick, score: sc.score }, place });
   }
 
   private startPractice(): void {
@@ -514,6 +591,11 @@ export class App {
           this.world.transform();
         }
         this.hud.setTitle({ attract, placement: attract ? 'none' : this.placement, progress: this.requireNewVisitor ? 0 : this.presence.startProgress(now), waitingNext: this.requireNewVisitor && present });
+        if (now - this.lastBoardsAt > 60_000) {
+          // Keep the shared boards warm for the selection cards and the results.
+          this.lastBoardsAt = now;
+          for (const d of DIFFICULTY_IDS) void this.online.refresh(d, 'today');
+        }
         if (!attract && !this.requireNewVisitor && this.presence.ready(now)) this.startSelect(now);
         break;
       }
@@ -522,16 +604,23 @@ export class App {
         const hand = g?.hands[0] ?? null;
         const st = sel.update(now, hand ? hand.palm.x : null);
         const L = this.gfx.layout;
-        const rects = STAGE_IDS.map((_, i) => {
+        const rects = HAND.selectCardsX.map((_, i) => {
           const cx = HAND.selectCardsX[i]!;
           return { l: L.viewToScreen({ x: cx - HAND.selectCardHalfW, y: 0.5 }).x, r: L.viewToScreen({ x: cx + HAND.selectCardHalfW, y: 0.5 }).x };
         });
         this.hud.updateSelect(rects, st.hover, st.progress, hand ? L.viewToScreen(hand.palm) : null);
-        if (st.hover !== null) this.world.theme = STAGES[STAGE_IDS[st.hover]!].themes.intro;
+        const opts = this.selectOptions();
+        if (st.hover !== null) this.world.theme = opts ? opts[st.hover]!.themes.intro : stagesOf(DIFFICULTY_IDS[st.hover]!)[0]!.themes.intro;
         if (st.chosen !== null) {
-          this.stageId = STAGE_IDS[st.chosen]!;
-          this.hud.cutin(STAGES[this.stageId].name, `${STAGES[this.stageId].level}　${STAGES[this.stageId].reading}`, 'amber', false);
-          this.startCalibration(now);
+          if (!opts) {
+            this.openStageStep(now, DIFFICULTY_IDS[st.chosen]!);
+            this.botScript();
+          } else {
+            const def = opts[st.chosen]!;
+            this.stageId = def.id;
+            this.hud.cutin(def.name, `${DIFFICULTIES[def.difficulty].level}　${def.reading}`, 'amber', false);
+            this.startCalibration(now);
+          }
         }
         this.presence.update(now, present, present ? 'ok' : 'none');
         if (this.presence.absentFor(now) > 3000) this.setPhase('title');
@@ -560,6 +649,7 @@ export class App {
         const b = this.battle!;
         const gt = now - this.playStart;
         for (const e of events) b.pushEvent(e.t - this.playStart - this.offsetMs, e);
+        this.engine.expectSeals = b.expectedSeals(gt, this.sealSet);
         const bev = b.update(gt);
         this.handleBattleEvents(bev, now, gt, g);
         ghost = this.tutorialGhost(b, gt, g);
@@ -688,7 +778,20 @@ export class App {
   /** Tutorial: a translucent "ghost hand" demonstrates what the current tutorial spirit needs. */
   private tutorialGhost(b: BattleSession, gt: number, g: GestureFrame | null): SynthHand[] | null {
     const a = b.enemies.find((x) => x.state === 'alive' && x.e.tutorial && gt >= x.e.spawn + 600);
-    if (!a) return null;
+    if (!a) {
+      // Seal guide (初級・中級): shortly before a seal is due, translucent hands show how to form it.
+      if (STAGES[b.stage.stageId].difficulty === 'hard') return null;
+      for (const x of b.enemies) {
+        const st = x.state === 'alive' ? x.e.steps[x.step] : undefined;
+        if (!st || st.t === null || st.t - gt > JUDGE.sealAssistLeadMs || st.t - gt < -300) continue;
+        const r = b.req(st.tech);
+        if (r.kind !== 'seal') continue;
+        const hs = g?.hands ?? [];
+        const at: Vec2 = hs.length ? { x: hs.reduce((m, h) => m + h.palm.x, 0) / hs.length, y: Math.min(0.75, hs.reduce((m, h) => m + h.palm.y, 0) / hs.length) } : { x: 0.5, y: 0.62 };
+        return sealHands(r.seal, at, hs[0]?.size ?? 0.14);
+      }
+      return null;
+    }
     const step = a.e.steps[a.step];
     if (!step) return null;
     const req = b.req(step.tech);
@@ -739,7 +842,9 @@ export class App {
     if (this.demo && this.demoBattle && now - this.demoBattle.start > this.demoBattle.session.stage.durationMs + 1500) this.stopDemo();
     if (!this.demo) {
       // Attract: the bot fights a short battle on its own (ghost hands).
-      const demoStage = STAGE_IDS[this.demoCount++ % STAGE_IDS.length]!;
+      // Cycle easy → normal → hard, a different stage each round.
+      const n = this.demoCount++;
+      const demoStage = stagesOf(DIFFICULTY_IDS[n % 3]!)[Math.floor(n / 3) % 3]!.id;
       const stage = generateValidBattle({ seed: 0xa77ac7 + (Math.floor(now / 1000) % 5), flags: this.rt.flags, oneHand: false, coreOnly: false, structure: true, twoHandOk: true, durationMs: 36_000, stage: demoStage });
       this.world.theme = STAGES[demoStage].themes.intro;
       const start = now + 800;
@@ -750,6 +855,7 @@ export class App {
       const engine = new GestureEngine({ shapes: SHAPE_IDS, motions: true, sigils: true, twoHand: true, seals: true });
       const demo = { source, engine, frame: null as GestureFrame | null, field: new FieldBuilder(TRACKING.fieldW, TRACKING.fieldH) };
       source.frames.on((f) => {
+        if (this.demoBattle) engine.expectSeals = this.demoBattle.session.expectedSeals(f.t - this.demoBattle.start);
         const gf = engine.update(f);
         demo.frame = gf;
         const db = this.demoBattle;
@@ -795,7 +901,8 @@ export class App {
       script = (t) => (t < arrive ? [] : idle(t));
     } else if (this.phase === 'select') {
       // Walk the hand over a card and hold it there.
-      const pick = [1, 2, 0][this.botVisits++ % 3]!;
+      // Difficulty: normal → hard → easy …; stage: cycles every three visits.
+      const pick = this.selectStep === 'difficulty' ? [1, 2, 0][this.botVisits % 3]! : Math.floor(this.botVisits++ / 3) % 3;
       const at = now + 300;
       script = perform([{ at, shape: 'open', holdMs: 60_000, formMs: 400, at2: { x: HAND.selectCardsX[pick]!, y: 0.66 } }], 'R');
     } else if (this.phase === 'calibrate' && this.calibStep === 'open') {

@@ -5,6 +5,7 @@ import { JUDGE } from '../config';
 import type { GestureEvent } from '../gesture/engine';
 import { Difficulty } from '../game/difficulty';
 import { applyGrade, newScore, type Grade, type ScoreState } from '../game/score';
+import type { SealKind } from '../gesture/seals';
 import { Rng } from '../core/rng';
 import type { BattleStage, Enemy, SectionKind, Step } from './stage';
 import { effectiveReq, matches, TECH, TECHNIQUES, type Req, type Technique } from './techniques';
@@ -87,6 +88,25 @@ export class BattleSession {
     return effectiveReq(TECH[techId]!, this.o.oneHand, this.o.twoHandOk);
   }
 
+  /** Seals take longer to form than one-hand shapes: their timing window is wider. */
+  private stepScale(techId: string): number {
+    return this.req(techId).kind === 'seal' ? JUDGE.sealWindowScale : 1;
+  }
+
+  /** Seals the player is expected to form now or soon (the gesture engine eases these). */
+  expectedSeals(now: number, out = new Set<SealKind>()): Set<SealKind> {
+    out.clear();
+    for (const a of this.enemies) {
+      if (a.state !== 'alive') continue;
+      const step = a.e.steps[a.step];
+      if (!step) continue;
+      const r = this.req(step.tech);
+      if (r.kind !== 'seal') continue;
+      if (step.t === null ? now >= a.e.arrive - 300 : now >= step.t - JUDGE.sealAssistLeadMs && now <= step.t + JUDGE.goodMs * this.windowScale * JUDGE.sealWindowScale) out.add(r.seal);
+    }
+    return out;
+  }
+
   pushEvent(tGame: number, ev: GestureEvent): void {
     if (ev.type === 'cast' || ev.type === 'seal') this.queue.push({ t: tGame, ev });
   }
@@ -156,7 +176,10 @@ export class BattleSession {
         dt = 0;
       } else {
         dt = t - step.t;
-        if (dt < -EARLY_MS * ws || dt > goodW) continue;
+        const sw = this.stepScale(step.tech);
+        if (dt < -EARLY_MS * ws * sw || dt > goodW * sw) continue;
+        // Judge seals on their own (wider) scale.
+        if (sw !== 1) dt /= sw;
       }
       if (!best || Math.abs(dt) < Math.abs(best.dt)) best = { a, dt };
     }
@@ -279,7 +302,7 @@ export class BattleSession {
         }
         continue;
       }
-      if (now <= step.t + JUDGE.goodMs * ws + 120) continue;
+      if (now <= step.t + JUDGE.goodMs * ws * this.stepScale(step.tech) + 120) continue;
       const tech = TECH[step.tech]!;
       this.events.push({ type: 'miss', t: now, enemy: a.e.id, tech });
       a.lastMissT = now;

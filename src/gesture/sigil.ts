@@ -6,7 +6,7 @@ import type { Vec2 } from '../core/types';
 
 export type SigilKind = 'circle' | 'triangle' | 'zigzag' | 'spiral';
 export const SIGIL_IDS: SigilKind[] = ['circle', 'triangle', 'zigzag', 'spiral'];
-export const SIGIL_LABEL: Record<SigilKind, string> = { circle: '円', triangle: '三角', zigzag: '稲妻', spiral: '渦' };
+export const SIGIL_LABEL: Record<SigilKind, string> = { circle: '円', triangle: '三角', zigzag: 'ジグザグ', spiral: '渦' };
 
 const N = 64;
 const SQUARE = 250;
