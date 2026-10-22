@@ -42,6 +42,8 @@ export const GESTURE = {
   flickSpeed: 11,
   flickWindowMs: 140,
   motionRefractoryMs: 420,
+  /** Ignore the opposite motion (the return stroke) for this long after a motion. */
+  returnStrokeMs: 900,
   /** Two hands: join below / spread above this palm-centre distance (palm sizes). */
   joinDist: 1.6,
   spreadDist: 3.2,

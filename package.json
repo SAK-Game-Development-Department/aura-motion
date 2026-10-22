@@ -20,7 +20,12 @@
     "check:pages": "node scripts/check-pages-limits.mjs",
     "check:all": "npm run typecheck && npm run lint && npm run test && npm run build && npm run e2e",
     "zip": "node scripts/make-zip.mjs",
-    "serve:local": "node scripts/serve-local.mjs"
+    "serve:local": "node scripts/serve-local.mjs",
+    "lab": "node scripts/copy-mediapipe.mjs && vite --config vite.lab.config.ts",
+    "build:lab": "node scripts/copy-mediapipe.mjs && vite build --config vite.lab.config.ts && node scripts/check-pages-limits.mjs dist-lab",
+    "deploy:lab": "npm run build:lab && npx wrangler pages deploy dist-lab --project-name aura-lab --branch main",
+    "deploy": "npm run build && npx wrangler pages deploy dist --project-name aura-motion --branch main",
+    "gesture-eval": "EVAL_WRITE=1 vitest run tests/eval --testTimeout=1800000"
   },
   "keywords": [],
   "type": "module",

@@ -126,3 +126,18 @@ describe('quality gates on synthetic data (quick grid)', () => {
     expect(evalTwoHand('quick')).toBeGreaterThanOrEqual(0.9);
   });
 });
+
+describe('motion return stroke', () => {
+  it('pulling the hand back after a push is not a pull', () => {
+    const eng = new GestureEngine({ motions: true, sigils: false, twoHand: false });
+    // push then return to the original size
+    const frames = [];
+    for (let t = 0; t < 2200; t += 33) {
+      const k = t < 700 ? 0 : t < 950 ? (t - 700) / 250 : t < 1250 ? 1 : t < 1500 ? 1 - (t - 1250) / 250 : 0;
+      const h = withShape({ ...defaultHand('R'), size: 0.15 * (1 + 0.4 * k) }, 'fist');
+      frames.push({ t, poses: [], aspect: 16 / 9, hands: [{ lm: buildHand(h), score: 1 }] });
+    }
+    const casts = runFrames(eng, frames).filter((e) => e.type === 'cast' && e.release !== 'hold').map((e) => (e as { release: string }).release);
+    expect(casts).toEqual(['push']);
+  });
+});

@@ -154,6 +154,9 @@ export function twoHandSequence(v: Variation, seed: number): { frames: PoseFrame
  */
 export function idleSequence(durationMs: number, seed: number, noise: NoiseOptions): PoseFrame[] {
   const rng = new Rng(seed);
+  // Brief accidental shapes (scratching, adjusting a sleeve): < 300 ms each.
+  const ACCIDENTAL: ShapeId[] = ['fist', 'open', 'point', 'two'];
+  let flash: { shape: ShapeId; until: number } | null = null;
   const frames: PoseFrame[] = [];
   let k = rng.range(0, 0.5);
   let kT = k;
@@ -162,6 +165,7 @@ export function idleSequence(durationMs: number, seed: number, noise: NoiseOptio
   let rot = 0;
   let rotT = 0;
   let size = 0.14;
+  let sizeT = 0.14;
   let present = true;
   let nextChange = 0;
   for (let t = 0; t <= durationMs; t += DT) {
@@ -169,7 +173,7 @@ export function idleSequence(durationMs: number, seed: number, noise: NoiseOptio
       kT = rng.range(0, 0.75);
       posT = { x: rng.range(0.3, 0.7), y: rng.range(0.4, 0.8) };
       rotT = rng.range(-40, 40);
-      size = rng.range(0.1, 0.22);
+      sizeT = rng.range(0.1, 0.22);
       if (rng.chance(0.06)) present = !present;
       nextChange = t + rng.range(400, 2200);
     }
@@ -177,11 +181,17 @@ export function idleSequence(durationMs: number, seed: number, noise: NoiseOptio
     k += (kT - k) * a;
     pos = { x: pos.x + (posT.x - pos.x) * a, y: pos.y + (posT.y - pos.y) * a };
     rot += (rotT - rot) * a;
+    size += (sizeT - size) * a * 0.5;
     if (!present) {
       frames.push({ t, poses: [], hands: [], aspect: 16 / 9 });
       continue;
     }
-    const h = relaxedHand({ ...defaultHand('R'), wrist: pos, rot, size, yaw: Math.sin(t / 1300) * 25 }, k);
+    let h = relaxedHand({ ...defaultHand('R'), wrist: pos, rot, size, yaw: Math.sin(t / 1300) * 25 }, k);
+    if (!flash && rng.chance(0.004)) flash = { shape: rng.pick(ACCIDENTAL), until: t + rng.range(120, 280) };
+    if (flash) {
+      h = withShape(h, flash.shape);
+      if (t > flash.until) flash = null;
+    }
     frames.push(frame(t, [h], rng, noise));
   }
   return frames;

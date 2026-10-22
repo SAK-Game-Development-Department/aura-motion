@@ -1,9 +1,9 @@
-// End-to-end exhibition loop with the autoplay bot (synthetic visitor):
-// title → calibrate → play (all sections) → results → title.
+// End-to-end exhibition loop with the autoplay bot (synthetic hands):
+// title → calibrate (open, fist, beat) → practice (casts) → title.
 import { expect, test } from '@playwright/test';
-import { FAST, state, waitFor } from './helpers';
+import { FAST, state, testHook, waitFor } from './helpers';
 
-test('full loop: a visitor plays through and the booth resets', async ({ page }) => {
+test('full loop: hand shown → calibration → techniques → back to title', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`/${FAST}`);
@@ -11,70 +11,69 @@ test('full loop: a visitor plays through and the booth resets', async ({ page })
   const s0 = await waitFor(page, (s) => s.phase === 'title', 60_000, seen);
   expect(['webgpu', 'webgl2']).toContain(s0.backend);
   await waitFor(page, (s) => s.phase === 'calibrate', 30_000, seen);
-  const play = await waitFor(page, (s) => s.phase === 'play' && s.section !== null, 30_000, seen);
-  expect(play.section).toBe('intro');
-  const sections = new Set<string>();
-  const res = await waitFor(
-    page,
-    (s) => {
-      if (s.section) sections.add(s.section);
-      return s.phase === 'results';
-    },
-    90_000,
-    seen,
-  );
-  expect([...sections]).toEqual(['intro', 'flow', 'wall', 'dodge', 'finale']);
-  expect(res.highscores).toBeGreaterThan(0);
-  await page.screenshot({ path: 'test-results/flow-results.png' });
-  // The bot leaves after the results; the booth returns to the title by itself.
+  await waitFor(page, (s) => s.phase === 'practice', 40_000, seen);
+  const st = await state(page);
+  expect(st.thresholdsCalibrated).toBe(true);
+  expect(st.calibrated).toBe(true);
+  const p = await waitFor(page, (s) => s.casts >= 3, 30_000, seen);
+  expect(p.lastCast).toBeTruthy();
+  await page.screenshot({ path: 'test-results/practice.png' });
+  // The bot leaves; after the (fast-mode) absence timeout the booth resets.
   await waitFor(page, (s) => s.phase === 'title', 30_000, seen);
-  expect(seen.filter((p) => p !== 'loading').slice(0, 5)).toEqual(['title', 'calibrate', 'play', 'results', 'title']);
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('aura.highscores.v1') ?? '[]'));
-  expect(stored[0].score).toBeGreaterThanOrEqual(0);
-  expect(typeof stored[0].name).toBe('string');
-  expect(Object.keys(stored[0]).sort()).toEqual(['at', 'name', 'rank', 'score', 'seated']);
+  expect(seen.filter((x) => x !== 'loading').slice(0, 4)).toEqual(['title', 'calibrate', 'practice', 'title']);
   expect(errors).toEqual([]);
 });
 
-test('visitor leaving mid-play returns to the title (absent timeout)', async ({ page }) => {
-  await page.goto(`/${FAST}`);
-  await waitFor(page, (s) => s.phase === 'play', 60_000);
-  await page.evaluate(() => (window as unknown as { __aura: { test(c: string): void } }).__aura.test('leave'));
-  const t0 = Date.now();
-  await waitFor(page, (s) => s.phase === 'title', 20_000);
-  // fast mode: absentReturnMs = 3 s
-  expect(Date.now() - t0).toBeGreaterThan(2500);
-});
-
-test('empty booth shows the attract demo', async ({ page }) => {
-  await page.goto(`/?source=synth&fast=1&flags=-particles`);
-  await waitFor(page, (s) => s.phase === 'title', 60_000);
-  // Synthetic idle visitor is present → no demo; make them leave.
-  await page.evaluate(() => (window as unknown as { __aura: { test(c: string): void } }).__aura.test('leave'));
-  const s = await waitFor(page, (x) => x.demo, 15_000);
+test('empty booth shows the ghost-hand attract demo', async ({ page }) => {
+  await page.goto(`/?source=empty&fast=1&flags=-particles`);
+  const s = await waitFor(page, (x) => x.demo, 30_000);
   expect(s.phase).toBe('title');
   await page.screenshot({ path: 'test-results/attract.png' });
-  await page.evaluate(() => (window as unknown as { __aura: { test(c: string): void } }).__aura.test('return'));
-  await waitFor(page, (x) => !x.demo && x.present, 15_000);
 });
 
-test('debug overlay toggles with D and shows latency/frame breakdown', async ({ page }) => {
+test('hand leaving during practice returns to the title', async ({ page }) => {
   await page.goto(`/${FAST}`);
-  await waitFor(page, (s) => s.phase !== 'loading', 60_000);
+  await waitFor(page, (s) => s.phase === 'practice', 60_000);
+  await testHook(page, 'leave');
+  await waitFor(page, (s) => s.phase === 'title', 20_000);
+});
+
+test('debug overlay (D) shows landmarks, features, confidences and the state machine', async ({ page }) => {
+  await page.goto(`/${FAST}`);
+  await waitFor(page, (s) => s.present, 60_000);
   await page.keyboard.press('d');
   const ov = page.locator('pre', { hasText: 'AURA debug' });
   await expect(ov).toBeVisible();
   await expect(ov).toContainText('capture→tracked');
-  await expect(ov).toContainText('frame breakdown');
+  await expect(page.locator('pre', { hasText: 'state machine' })).toBeVisible();
   await page.screenshot({ path: 'test-results/debug-overlay.png' });
   await page.keyboard.press('d');
   await expect(ov).toBeHidden();
 });
 
-test('WebGL2 fallback runs the same game', async ({ page }) => {
+test('WebGL2 fallback runs the same app', async ({ page }) => {
   await page.goto(`/${FAST}&webgl=1`);
-  const s = await waitFor(page, (x) => x.phase === 'play', 90_000);
+  const s = await waitFor(page, (x) => x.phase === 'practice', 90_000);
   expect(s.backend).toBe('webgl2');
-  const st = await state(page);
-  expect(st.errors).toBe(0);
+  expect((await state(page)).errors).toBe(0);
+});
+
+test('the exhibition build contains no recording tools', async () => {
+  // Scan every built file: the gesture lab (and its landmark recorder) must not ship.
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const files: string[] = [];
+  (function walk(d: string) {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else files.push(p);
+    }
+  })('dist');
+  expect(files.some((f) => f.includes('gesture-lab'))).toBe(false);
+  for (const f of files.filter((x) => /\.(js|html)$/.test(x) && !x.includes('mediapipe'))) {
+    const s = readFileSync(f, 'utf8');
+    expect(s, f).not.toContain('aura-gesture-samples');
+    expect(s, f).not.toContain('Gesture Lab');
+  }
 });

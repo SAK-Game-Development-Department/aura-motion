@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="robots" content="noindex" />
+    <title>AURA Gesture Lab</title>
+  </head>
+  <body>
+    <header>
+      <h1>AURA Gesture Lab</h1>
+      <span class="note">開発者ツール。映像は端末外に出ず、保存されません。記録できるのは手のランドマーク座標（数値）だけで、JSON をこの端末にダウンロードします。</span>
+    </header>
+    <main>
+      <section class="left">
+        <div class="bar">
+          <label>入力
+            <select id="src">
+              <option value="camera">カメラ</option>
+              <option value="synth">合成の手</option>
+              <option value="mouse">マウス</option>
+            </select>
+          </label>
+          <label><input type="checkbox" id="video" /> カメラ映像を薄く表示（この画面だけ）</label>
+          <span id="status" class="dim"></span>
+        </div>
+        <canvas id="view" width="960" height="540"></canvas>
+        <div class="bar" id="synthBar" hidden>
+          合成: <select id="synShape"></select>
+          ノイズ <input type="range" id="synNoise" min="0" max="0.015" step="0.001" value="0.004" />
+          回転 <input type="range" id="synRot" min="-60" max="60" step="1" value="0" />
+          手の向き(yaw) <input type="range" id="synYaw" min="0" max="70" step="1" value="0" />
+          大きさ <input type="range" id="synSize" min="0.06" max="0.32" step="0.01" value="0.15" />
+          <button id="synMotion">動き</button><select id="synMotionKind"></select>
+          <button id="synSigil">印</button><select id="synSigilKind"></select>
+        </div>
+        <div class="row">
+          <div class="panel">
+            <h2>認識（手 1）</h2>
+            <canvas id="norm" width="220" height="250"></canvas>
+            <pre id="feat"></pre>
+          </div>
+          <div class="panel grow">
+            <h2>形の信頼度</h2>
+            <div id="bars"></div>
+            <h2>状態機械 / イベント</h2>
+            <pre id="fsm"></pre>
+            <pre id="log" class="log"></pre>
+          </div>
+        </div>
+      </section>
+      <section class="right">
+        <div class="panel">
+          <h2>記録（ランドマークのみ）</h2>
+          <div class="bar">
+            ラベル <select id="label"></select>
+            記録者タグ <input id="who" value="p1" size="6" />
+            <button id="rec">● 記録（R）</button>
+            <button id="rec60">60フレーム記録</button>
+          </div>
+          <pre id="counts"></pre>
+          <div class="bar">
+            <button id="save">JSON を保存</button>
+            <label class="file">JSON を読み込む <input type="file" id="load" accept="application/json" /></label>
+            <button id="clear">全消去</button>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>評価</h2>
+          <div class="bar">
+            <button id="evalRule">規則ベースで評価</button>
+            <button id="evalKnn">kNN で評価（人ごと／1件抜き交差検証）</button>
+            <label>使う形 <select id="shapeSet"><option value="all">8形</option><option value="core">3形（にぎる・ひらく・さす）</option></select></label>
+          </div>
+          <div id="confusion"></div>
+        </div>
+        <div class="panel">
+          <h2>閾値（ライブで反映）</h2>
+          <div id="sliders"></div>
+          <div class="bar">
+            <button id="calib">自動校正（ひらく 2秒 → にぎる 2秒）</button>
+            <button id="resetTh">既定値に戻す</button>
+            <button id="exportTh">閾値を JSON で保存</button>
+          </div>
+          <pre id="calibStatus" class="dim"></pre>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./lab.ts"></script>
+  </body>
+</html>

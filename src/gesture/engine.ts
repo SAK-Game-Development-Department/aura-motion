@@ -73,6 +73,8 @@ interface HandCtx {
   lastTip: Vec2 | null;
   /** The stance that just ended (a motion right after a brief loss still releases it). */
   recent: { shape: ShapeId; since: number; until: number } | null;
+  /** Since when the stance shape has been *strongly* recognised (≥ enterConf) without a break. */
+  strongSince: number | null;
 }
 
 export class GestureEngine {
@@ -107,7 +109,7 @@ export class GestureEngine {
       seen.add(h.slot);
       let c = this.ctx.get(h.slot);
       if (!c) {
-        c = { stab: new ShapeStabilizer(), motion: new MotionDetector(), state: 'idle', stance: null, since: t, lostAt: null, stroke: [], strokeStillSince: null, lastTip: null, recent: null };
+        c = { stab: new ShapeStabilizer(), motion: new MotionDetector(), state: 'idle', stance: null, since: t, lostAt: null, stroke: [], strokeStillSince: null, lastTip: null, recent: null, strongSince: null };
         this.ctx.set(h.slot, c);
         events.push({ type: 'handIn', t, hand: h.slot });
       }
@@ -126,7 +128,7 @@ export class GestureEngine {
         decision,
         state: c.state,
         stance: c.stance,
-        charge: c.stance ? Math.min(1, (t - c.since) / GESTURE.chargeMs) : 0,
+        charge: c.stance && c.strongSince !== null ? Math.min(1, (t - c.strongSince) / GESTURE.chargeMs) : 0,
         stroke: c.stroke,
       });
     }
@@ -185,10 +187,16 @@ export class GestureEngine {
       c.state = 'stance';
       c.stroke = [];
       c.strokeStillSince = null;
+      c.strongSince = null;
       events.push({ type: 'stance', t, hand: h.slot, shape, conf: d.conf });
     }
     if (!c.stance) return;
     const charge = Math.min(1, (t - c.since) / GESTURE.chargeMs);
+    // Static casts need the shape held *strongly* for the whole charge (the
+    // hysteresis band alone would let a brief accidental shape linger and fire).
+    if (shape === c.stance && d.conf >= GESTURE.enterConf) c.strongSince ??= t;
+    else c.strongSince = null;
+    const strongCharge = c.strongSince !== null ? Math.min(1, (t - c.strongSince) / GESTURE.chargeMs) : 0;
 
     // Motion release (any time after a minimal charge, even after a static cast).
     if (mot && charge >= GESTURE.minChargeForMotion) {
@@ -212,7 +220,7 @@ export class GestureEngine {
     }
     // Static cast: hold the shape until fully charged (once per stance).
     const staticOk = (this.opts.staticCast ?? this.opts.shapes).includes(c.stance);
-    if (c.state === 'stance' && charge >= 1 && staticOk && c.stroke.length < 6) {
+    if (c.state === 'stance' && strongCharge >= 1 && staticOk && c.stroke.length < 6) {
       events.push({ type: 'cast', t, hand: h.slot, shape: c.stance, release: 'hold', quality: d.conf, charge: 1 });
       c.state = 'spent';
     }

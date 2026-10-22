@@ -5,12 +5,16 @@ AURA のコード、ゲーム名、用語、ビジュアルはすべてオリジ
 ## 同梱しているモデル・ランタイム
 | 名前 | 用途 | ライセンス | 出典 |
 |---|---|---|---|
-| MediaPipe Tasks Vision (`@mediapipe/tasks-vision` 1.1.1) | 姿勢推定と輪郭抽出の WASM ランタイム | Apache License 2.0 | https://github.com/google-ai-edge/mediapipe / npm |
-| Pose Landmarker (lite / full, float16) | 姿勢推定モデル | Apache License 2.0 | https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task （full も同じ場所） |
-| Selfie Segmenter (float16) | 人物の輪郭抽出モデル | Apache License 2.0 | https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite |
+| MediaPipe Tasks Vision (`@mediapipe/tasks-vision` 1.1.1) | 手のランドマーク推定（と任意の輪郭抽出）の WASM ランタイム | Apache License 2.0 | https://github.com/google-ai-edge/mediapipe / npm |
+| Hand Landmarker (float16) | 手のランドマーク推定モデル（21点） | Apache License 2.0 | https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task |
+| Selfie Segmenter (float16) | 人物の輪郭抽出モデル（Tier 1 の任意要素。既定はオフ） | Apache License 2.0 | https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite |
 
-モデルカード: https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker , https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter
-（姿勢推定と人物の輪郭抽出だけに使い、顔の認識・識別には使いません）
+モデルカード: https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker , https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter
+（手のランドマーク推定と、任意で人物の輪郭抽出だけに使います。顔の認識・識別には使いません）
+
+## アルゴリズム
+- $1 Unistroke Recognizer（Wobbrock, Wilson, Li, UIST 2007）を論文に基づいて自前で実装（`src/gesture/sigil.ts`）
+- One Euro Filter（Casiez, Roussel, Vogel, CHI 2012）を論文に基づいて自前で実装（`src/core/oneEuro.ts`）
 
 ## ライブラリ（ビルドに含まれるもの）
 | 名前 | ライセンス |

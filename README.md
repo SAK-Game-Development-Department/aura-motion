@@ -1,9 +1,9 @@
 # AURA
 
-カメラの前に立つと、体が光の粒子になる。迫る光の球に触れ、壁の穴にポーズを合わせ、光の弾をかわし、
-腕で粒子の川を導く。全身で遊ぶ約90秒のアクションゲームです（学園祭展示用）。
+カメラに手をかざすと、手が光の骨格と粒子になる。手の形と動きで「術」を繰り出し、迫る敵を倒す ── 光の術バトル（学園祭展示用、約90秒）。
+**現在 P1（手の認識の実現性の検証）。戦闘は P2 で入ります。**
 
-- 音は一切使いません。キーボード・マウスも不要です（立つだけで始まり、ボタンは手をかざして1秒）
+- 音は一切使いません。キーボード・マウスも不要です（手をかざすだけで始まる）
 - カメラ映像は端末内でだけ処理し、保存も送信もしません。顔の識別は行いません
 - 静的サイトなので Cloudflare Pages で無料で配信できます。ネットワークが切れても Service Worker とローカルサーバーで動きます
 
@@ -20,11 +20,13 @@ npm run test         # ロジックのテスト（Vitest）
 npm run e2e          # E2E（Playwright。ビルドしてから preview に対して実行）
 npm run check:all    # 型チェック・lint・テスト・ビルド・E2E をまとめて実行
 ```
-カメラが無くても動かせます: `http://localhost:5173/?source=autoplay`（自動で遊ぶボット）、`?source=mouse`（マウスで手を動かす）。
+カメラが無くても動かせます: `http://localhost:5173/?source=autoplay`（自動で遊ぶボット）、`?source=mouse`（マウスで手、数字キーで形）。
+ジェスチャーラボ: `npm run lab` → http://localhost:5174 （`?source=synth` で合成の手）。
 そのほかの URL パラメータは `CLAUDE.md` を参照してください。
 
 ## 公開中の URL
-**https://aura-motion.pages.dev/** （Chrome / Edge で開き、カメラを許可する。観客向けの画面は `/audience`）
+- 展示アプリ: **https://aura-motion.pages.dev/** （Chrome / Edge で開き、カメラを許可する。観客向けの画面は `/audience`）
+- ジェスチャーラボ（開発者ツール）: **https://aura-lab.pages.dev/** （認識の確認・ランドマークの記録・混同行列）
 
 ## デプロイ（Cloudflare Pages、無料）
 ### A. GitHub 連携（推奨）
@@ -63,6 +65,7 @@ localhost なので HTTPS が無くてもカメラが使えます。一度オン
 | [CLAUDE.md](CLAUDE.md) | 設計方針・コマンド・規約・禁止事項 |
 | [docs/art-direction.md](docs/art-direction.md) | 色・動き・情報の伝え方・光過敏への安全基準 |
 | [docs/decisions.md](docs/decisions.md) | 技術判断とその根拠 |
+| [docs/gesture-eval.md](docs/gesture-eval.md) | ジェスチャー認識の評価（合成データ）と実機での評価手順 |
 | [docs/perf.md](docs/perf.md) | 性能の測定結果と方法 |
 | [docs/visual-checklist.md](docs/visual-checklist.md) | 見た目の確認項目 |
 | [docs/venue-checklist.md](docs/venue-checklist.md) | 実機でしか確認できない項目と合格基準 |

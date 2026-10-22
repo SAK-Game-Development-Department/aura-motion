@@ -7,3 +7,4 @@ public/mediapipe/wasm/
 *.log
 .DS_Store
 soak-out/
+dist-lab/

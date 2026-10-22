@@ -164,6 +164,11 @@ export class CameraSource implements InputSource {
     /* push-based */
   }
 
+  /** The (hidden) video element — only the gesture lab draws it, on its own screen. */
+  get videoElement(): HTMLVideoElement | null {
+    return this.video;
+  }
+
   /** ms since the last tracking result (watchdog). */
   get resultAge(): number {
     return this.lastResultAt ? performance.now() - this.lastResultAt : 0;

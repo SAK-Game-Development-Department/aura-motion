@@ -2,18 +2,21 @@ import type { Page } from '@playwright/test';
 
 export interface AuraState {
   t: number;
-  gameT: number | null;
   phase: string;
+  calibStep: string | null;
   backend: string;
   source: string;
   present: boolean;
-  score: number | null;
-  counts: { perfect: number; good: number; miss: number } | null;
-  section: string | null;
+  hands: number;
+  shape: string | null;
+  stance: string | null;
+  casts: number;
+  lastCast: string | null;
+  calibrated: boolean;
+  thresholdsCalibrated: boolean;
   particles: number;
   fps: number;
   demo: boolean;
-  highscores: number;
   heap: number | null;
   dom: number;
   errors: number;
@@ -24,7 +27,6 @@ export async function state(page: Page): Promise<AuraState> {
   return page.evaluate(() => (window as unknown as { __aura: { inspect(): unknown } }).__aura.inspect()) as Promise<AuraState>;
 }
 
-/** Poll until predicate is true; returns the matching state. Records the phases seen. */
 export async function waitFor(page: Page, pred: (s: AuraState) => boolean, timeoutMs = 90_000, seen?: string[]): Promise<AuraState> {
   const t0 = Date.now();
   for (;;) {
@@ -34,8 +36,12 @@ export async function waitFor(page: Page, pred: (s: AuraState) => boolean, timeo
       if (pred(s)) return s;
     }
     if (Date.now() - t0 > timeoutMs) throw new Error(`waitFor timed out; last state ${JSON.stringify(s)}`);
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(200);
   }
 }
 
 export const FAST = '?source=autoplay&fast=1&flags=-particles';
+
+export async function testHook(page: Page, cmd: 'leave' | 'return'): Promise<void> {
+  await page.evaluate((c) => (window as unknown as { __aura: { test(c: string): void } }).__aura.test(c), cmd);
+}

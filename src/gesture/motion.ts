@@ -32,9 +32,12 @@ export interface MotionEvent {
 }
 
 /** Per-hand motion detector. */
+const OPPOSITE: Record<MotionKind, MotionKind | null> = { swipeL: 'swipeR', swipeR: 'swipeL', swipeU: 'swipeD', swipeD: 'swipeU', push: 'pull', pull: 'push', flick: null };
+
 export class MotionDetector {
   private hist: Sample[] = [];
   private lastEvent = -Infinity;
+  private lastKind: MotionKind | null = null;
 
   reset(): void {
     this.hist = [];
@@ -44,9 +47,13 @@ export class MotionDetector {
     this.hist.push({ t, palm: { x: palm.x * aspect, y: palm.y }, tip: { x: tip.x * aspect, y: tip.y }, size });
     while (this.hist.length && t - this.hist[0]!.t > 700) this.hist.shift();
     if (t - this.lastEvent < GESTURE.motionRefractoryMs || this.hist.length < 3) return null;
-    const ev = this.detect(t);
+    let ev = this.detect(t);
+    // The return stroke after a motion (pulling the hand back after a push,
+    // swinging back after a swipe) is not a new gesture.
+    if (ev && this.lastKind && OPPOSITE[this.lastKind] === ev.kind && t - this.lastEvent < GESTURE.returnStrokeMs) ev = null;
     if (ev) {
       this.lastEvent = t;
+      this.lastKind = ev.kind;
       // Start the next gesture from a clean history.
       this.hist = this.hist.slice(-1);
     }

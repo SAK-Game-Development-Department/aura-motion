@@ -26,7 +26,7 @@ test(`soak ${MINUTES} min`, async ({ page }) => {
       (window as unknown as { gc?: () => void }).gc?.();
       return (window as unknown as { __aura: { inspect(): Record<string, unknown> } }).__aura.inspect();
     });
-    if (s.phase === 'results' && lastPhase !== 'results') plays++;
+    if (s.phase === 'practice' && lastPhase !== 'practice') plays++;
     lastPhase = String(s.phase);
     const ri = (s.rendererInfo ?? {}) as Record<string, number>;
     const heap = Number(s.heap ?? 0) / 2 ** 20;

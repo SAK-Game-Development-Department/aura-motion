@@ -1,11 +1,8 @@
-// Camera path with Chromium's fake device (no person in the image): the
-// permission flow, model loading and tracker initialisation must succeed.
+// Camera path with Chromium's fake device (no hand in the image).
 import { expect, test } from '@playwright/test';
 import { state, waitFor } from './helpers';
 
-test('camera boot: loading progress → title, tracking backend selected', async ({ page }) => {
-  const logs: string[] = [];
-  page.on('console', (m) => logs.push(`${m.type()}: ${m.text()}`));
+test('camera boot: loading progress → title, hand tracker running', async ({ page }) => {
   await page.goto('/?flags=-particles&debug=1');
   await expect(page.locator('.loading.on')).toBeVisible();
   const s = await waitFor(page, (x) => x.phase !== 'loading', 150_000);
@@ -13,11 +10,10 @@ test('camera boot: loading progress → title, tracking backend selected', async
   expect(s.source).toBe('camera');
   const dbg = await page.locator('pre', { hasText: 'AURA debug' }).textContent();
   const m = /tracking (\S+)/.exec(dbg ?? '');
-  console.log('tracking backend:', m?.[1], '| attempts:', /attempts: (.*)/.exec(dbg ?? '')?.[1]);
+  console.log('tracking backend:', m?.[1]);
   expect(m?.[1]).toMatch(/^(worker|inline)\/(GPU|CPU)$/);
   await page.screenshot({ path: 'test-results/camera-title.png' });
-  // Nobody in the fake video → attract demo after a while.
-  await page.waitForTimeout(5000);
+  await page.waitForTimeout(4000);
   expect((await state(page)).present).toBe(false);
 });
 
@@ -31,8 +27,10 @@ test('camera denied → error screen → mouse emergency mode', async ({ browser
   await waitFor(page, (s) => s.phase === 'error', 60_000);
   await expect(page.locator('.err h2')).toContainText('カメラ');
   await page.screenshot({ path: 'test-results/camera-error.png' });
-  // Mouse mode synthesises a visitor → the title sees someone present.
   const s = await waitFor(page, (x) => x.source === 'mouse' && x.phase !== 'error' && x.present, 20_000);
   expect(['title', 'calibrate']).toContain(s.phase);
+  // Number keys make shapes in the emergency mode.
+  await page.keyboard.press('1');
+  await waitFor(page, (x) => x.shape === 'fist', 10_000);
   await ctx.close();
 });

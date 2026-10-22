@@ -94,12 +94,14 @@ export interface IdleEval {
   stances: number;
   castsPer30s: number;
   byShape: Partial<Record<ShapeId, number>>;
+  byRelease: Record<string, number>;
 }
 
 export function evalIdle(minutes: number, seeds: number[], shapes: readonly ShapeId[] = SHAPE_IDS, noise = { jitter: 0.005, dropout: 0.02, zNoise: 2 }): IdleEval {
   let casts = 0;
   let stances = 0;
   const byShape: IdleEval['byShape'] = {};
+  const byRelease: Record<string, number> = {};
   for (const seed of seeds) {
     const eng = new GestureEngine({ shapes, motions: true, sigils: true, twoHand: false });
     const ev = runFrames(eng, idleSequence((minutes * 60_000) / seeds.length, seed, noise));
@@ -107,10 +109,11 @@ export function evalIdle(minutes: number, seeds: number[], shapes: readonly Shap
       if (e.type === 'cast') {
         casts++;
         byShape[e.shape] = (byShape[e.shape] ?? 0) + 1;
+        byRelease[e.release] = (byRelease[e.release] ?? 0) + 1;
       } else if (e.type === 'stance') stances++;
     }
   }
-  return { minutes, casts, stances, castsPer30s: casts / (minutes * 2), byShape };
+  return { minutes, casts, stances, castsPer30s: casts / (minutes * 2), byShape, byRelease };
 }
 
 export interface MotionEval {

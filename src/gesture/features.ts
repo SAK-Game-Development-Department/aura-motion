@@ -77,7 +77,7 @@ export interface Features {
   pinch: number;
   /** Index tip ↔ middle tip (palm units). */
   vSpread: number;
-  /** Fan: angle between the index and pinky directions (MCP → tip), degrees, 2D. */
+  /** Fan: angle between the index and pinky directions (MCP → tip), degrees, 3D. */
   fan: number;
   /** Fingertip heights above the wrist along the palm axis (palm units) [thumb..pinky]. */
   tipUp: [number, number, number, number, number];
@@ -101,11 +101,8 @@ export function features(n: Normalized): Features {
     thumbAcross: d(HL.thumbTip, HL.pinkyMcp),
     pinch: d(HL.thumbTip, HL.indexTip),
     vSpread: d(HL.indexTip, HL.middleTip),
-    fan: (() => {
-      const a = sub(p[HL.indexTip]!, p[HL.indexMcp]!);
-      const b = sub(p[HL.pinkyTip]!, p[HL.pinkyMcp]!);
-      return angleDeg({ x: a.x, y: a.y, z: 0 }, { x: b.x, y: b.y, z: 0 });
-    })(),
+    // 3D angle: turning the palm away (yaw) foreshortens the 2D fan but not this.
+    fan: angleDeg(sub(p[HL.indexTip]!, p[HL.indexMcp]!), sub(p[HL.pinkyTip]!, p[HL.pinkyMcp]!)),
     tipUp: [-p[HL.thumbTip]!.y, -p[HL.indexTip]!.y, -p[HL.middleTip]!.y, -p[HL.ringTip]!.y, -p[HL.pinkyTip]!.y],
     facing: n.facing,
   };

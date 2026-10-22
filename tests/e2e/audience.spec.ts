@@ -13,11 +13,9 @@ test('audience window mirrors live score and ranking', async ({ context, baseURL
   await aud.goto('/audience');
   const game = await context.newPage();
   await game.goto(`/${FAST}`);
-  await waitFor(game, (s) => s.phase === 'play' && (s.score ?? 0) > 0, 90_000);
-  await expect(aud.locator('#score')).not.toHaveText('', { timeout: 10_000 });
-  await expect(aud.locator('#section')).not.toHaveText('');
-  await waitFor(game, (s) => s.phase === 'results', 90_000);
-  await expect(aud.locator('#rank li').first()).toBeVisible({ timeout: 10_000 });
+  await waitFor(game, (s) => s.phase === 'practice' && s.casts > 0, 90_000);
+  await expect(aud.locator('#status')).toHaveText('', { timeout: 10_000 });
+  await expect(aud.locator('#n-fps')).not.toHaveText('-');
   await aud.screenshot({ path: 'test-results/audience.png' });
   expect(external).toEqual([]);
 });

@@ -1,7 +1,7 @@
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'public/**', 'release/**', 'test-results/**', 'playwright-report/**'] },
+  { ignores: ['dist/**', 'dist-lab/**', 'node_modules/**', 'public/**', 'release/**', 'test-results/**', 'playwright-report/**', 'soak-out/**'] },
   ...tseslint.configs.recommended,
   {
     rules: {

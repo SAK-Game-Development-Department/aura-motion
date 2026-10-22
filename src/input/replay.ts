@@ -1,4 +1,5 @@
-// Pose recordings: JSON serialisation + playback source.
+// Landmark recordings (JSON) — playback only. Recording lives in the gesture
+// lab (tools/gesture-lab) and is not part of the exhibition build.
 import type { Landmark, PoseFrame } from '../core/types';
 import { PulledSource } from './source';
 
@@ -45,27 +46,6 @@ export function parseRecording(json: string | unknown): Recording {
   const r = (typeof json === 'string' ? JSON.parse(json) : json) as Recording;
   if (r?.format !== 'aura-pose' || r.version !== 1 || !Array.isArray(r.frames)) throw new Error('not an aura-pose v1 recording');
   return r;
-}
-
-/** Records frames from any source (landmarks only — never images). */
-export class Recorder {
-  private frames: Recording['frames'] = [];
-  private t0: number | null = null;
-  private aspect = 16 / 9;
-  constructor(private maxFrames = 30 * 60 * 5) {}
-  push(f: PoseFrame): void {
-    if (this.t0 === null) this.t0 = f.t;
-    this.aspect = f.aspect;
-    if (this.frames.length < this.maxFrames) this.frames.push(encodeFrame(f, this.t0));
-  }
-  get length(): number {
-    return this.frames.length;
-  }
-  finish(meta?: Record<string, unknown>): Recording {
-    const r: Recording = { format: 'aura-pose', version: 1, aspect: this.aspect, frames: this.frames };
-    if (meta) r.meta = meta;
-    return r;
-  }
 }
 
 /** Plays a recording in real time (optionally looping), re-stamped to the app clock. */
