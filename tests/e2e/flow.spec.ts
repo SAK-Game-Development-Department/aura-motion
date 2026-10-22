@@ -29,7 +29,7 @@ test('full loop: hand shown → calibration → battle (all sections, boss ultim
   );
   expect([...sections]).toEqual(['intro', 'rush', 'guard', 'boss']);
   expect(last.kills).toBeGreaterThanOrEqual(3);
-  expect(last.ultimates).toBe(1);
+  expect(last.ultimates, JSON.stringify(last)).toBe(1);
   await page.screenshot({ path: 'test-results/results.png' });
   await waitFor(page, (s) => s.phase === 'title', 30_000, seen);
   expect(seen.filter((x) => x !== 'loading').slice(0, 5)).toEqual(['title', 'calibrate', 'play', 'results', 'title']);

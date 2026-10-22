@@ -158,7 +158,9 @@ export function generateBattle(o: StageOptions): BattleStage {
       const fin = sigils.length ? rng.pick(sigils) : (TECH.saiko as Technique);
       // Fit the chain into the section: 4 beats apart when there is room, never
       // less than each technique needs (validated below).
-      const room = s.end - 400 - lordAt - fin.busyMs;
+      // The finisher also gets time to drop the previous seal before drawing.
+      const finGap = fin.busyMs + 400;
+      const room = s.end - 400 - lordAt - finGap;
       const n = Math.max(1, Math.min(3, Math.floor(room / 1300)));
       const gap = Math.max(1300, Math.min(beatMs * 4, room / n));
       let t = lordAt;
@@ -167,7 +169,7 @@ export function generateBattle(o: StageOptions): BattleStage {
         chain.push({ tech: tech.id, t: Math.round(t) });
         t += gap;
       }
-      chain.push({ tech: fin.id, t: Math.round(t - gap + Math.max(fin.busyMs, gap)) });
+      chain.push({ tech: fin.id, t: Math.round(t - gap + Math.max(finGap, gap)) });
       add('lord', chain, 0.5, 0.3);
       // Minions before the lord arrives and after the finisher.
       let m = snap(s.start + beatMs);

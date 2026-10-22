@@ -48,7 +48,7 @@ function actFor(req: Req, T: number): Act {
     }
     case 'sigil': {
       const at = T - 2150;
-      const s = perform([{ at, shape: 'point', holdMs: 1900, sigil: req.sigil, at2: { x: 0.55, y: 0.78 } }], 'R', SIZE);
+      const s = perform([{ at, shape: 'point', holdMs: 1900, sigil: req.sigil, at2: { x: 0.55, y: 0.86 } }], 'R', SIZE);
       return { start: at, end: at + 2500, hands: s };
     }
     case 'seal': {

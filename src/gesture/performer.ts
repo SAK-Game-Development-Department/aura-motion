@@ -40,7 +40,11 @@ export function perform(steps: Step[], side: HandSide = 'R', size = 0.15): HandS
       const formMs = s.formMs ?? 220;
       const end = s.at + formMs + s.holdMs + 260;
       if (t < s.at) break;
-      const pos = s.at2 ?? base.wrist;
+      let pos = s.at2 ?? base.wrist;
+      const sc = size * 2.2;
+      const path = s.sigil ? sigilPath(s.sigil, 1, 0, 80) : null;
+      // A sigil starts where its first point is: form the shape there (no jump into the stroke).
+      if (path) pos = { x: pos.x + (path[0]!.x * sc) / (16 / 9), y: pos.y - size * 1.2 + path[0]!.y * sc };
       const target = s.shape === 'relaxed' ? relaxedHand({ ...base, wrist: pos }, 0.15) : withShape({ ...base, wrist: pos }, s.shape);
       if (t >= end) {
         prevShape = relaxedHand({ ...base, wrist: pos }, 0.15);
@@ -49,13 +53,16 @@ export function perform(steps: Step[], side: HandSide = 'R', size = 0.15): HandS
       }
       const k = ease.inOutSine(Math.min(1, (t - s.at) / formMs));
       h = lerpHand(prevShape, target, k);
+      // Sigils: reach the start point first, then form the shape (the approach is not part of the stroke).
+      if (path) {
+        const kp = Math.min(1, k * 2.5);
+        h = { ...h, wrist: { x: prevShape.wrist.x + (pos.x - prevShape.wrist.x) * kp, y: prevShape.wrist.y + (pos.y - prevShape.wrist.y) * kp } };
+      }
       const holdT = t - s.at - formMs;
-      if (holdT > 0 && s.sigil) {
+      if (holdT > 0 && path) {
         const u = Math.min(1, holdT / Math.max(1, s.holdMs - 300));
-        const path = sigilPath(s.sigil, 1, 0, 80);
         const p = path[Math.floor(u * (path.length - 1))]!;
-        const sc = size * 2.2;
-        h = { ...h, wrist: { x: pos.x + (p.x * sc) / (16 / 9), y: pos.y - size * 1.2 + p.y * sc } };
+        h = { ...h, wrist: { x: pos.x + ((p.x - path[0]!.x) * sc) / (16 / 9), y: pos.y + (p.y - path[0]!.y) * sc } };
       }
       const mStart = s.holdMs - 300;
       if (s.motion && holdT > mStart) {
