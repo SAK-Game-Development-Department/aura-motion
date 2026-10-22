@@ -32,6 +32,7 @@
 | B9 | テックレンズの文字の大きさ（3 m 離れて読めるか） | `style.css` の `.lens` |
 | B10 | 難易度の選択が迷わずできるか（手の位置とカードの対応、1.2 秒は長すぎないか） | `config/hand.ts` の `selectHoldMs`・`selectCardsX` |
 | B11 | 初級は初めての人でも主まで行けるか、上級は手応えがあるか | `config/game.ts` の `STAGE_TUNE` |
+| B13 | 眩しくないか（暗い部屋・プロジェクタで） | S キーの設定パネル（明るさ・光のにじみ・背景・演出の強さ）。既定値は `config/exhibit.ts` の `SETTINGS` |
 | B12 | 炎・結晶の敵が背景に埋もれないか（特に紅蓮ノ原） | `enemies.ts`、`battleView.ts` の `RIM` |
 
 ## 術バトル版（P1 時点）
