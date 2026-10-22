@@ -11,7 +11,7 @@ export interface CardData {
 
 export function cardUrl(base: string, d: CardData): string {
   const p = new URLSearchParams({ v: '1', s: String(d.score), r: d.rank, c: String(d.combo), n: d.name, d: d.date });
-  return `${new URL('card.html', base).href}#${p.toString()}`;
+  return `${new URL('card', base).href}#${p.toString()}`;
 }
 
 export function parseCard(hash: string): CardData | null {

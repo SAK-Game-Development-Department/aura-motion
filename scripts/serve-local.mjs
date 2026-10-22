@@ -21,6 +21,8 @@ createServer(async (req, res) => {
     let p = normalize(join(root, decodeURIComponent(url.pathname)));
     if (!p.startsWith(root)) { res.writeHead(403).end(); return; }
     if ((await stat(p).catch(() => null))?.isDirectory()) p = join(p, 'index.html');
+    // Extensionless pages like Cloudflare Pages ("/audience" → audience.html).
+    else if (!extname(p) && (await stat(`${p}.html`).catch(() => null))) p = `${p}.html`;
     const body = await readFile(p);
     res.writeHead(200, {
       'content-type': types[extname(p)] ?? 'application/octet-stream',

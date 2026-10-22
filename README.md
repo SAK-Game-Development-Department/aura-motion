@@ -23,6 +23,9 @@ npm run check:all    # 型チェック・lint・テスト・ビルド・E2E を�
 カメラが無くても動かせます: `http://localhost:5173/?source=autoplay`（自動で遊ぶボット）、`?source=mouse`（マウスで手を動かす）。
 そのほかの URL パラメータは `CLAUDE.md` を参照してください。
 
+## 公開中の URL
+**https://aura-motion.pages.dev/** （Chrome / Edge で開き、カメラを許可する。観客向けの画面は `/audience`）
+
 ## デプロイ（Cloudflare Pages、無料）
 ### A. GitHub 連携（推奨）
 1. このリポジトリを GitHub に push する
@@ -38,8 +41,10 @@ npm run check:all    # 型チェック・lint・テスト・ビルド・E2E を�
 ### B. Wrangler で直接アップロード
 ```bash
 npm run build
-npx wrangler pages deploy dist --project-name aura
+npx wrangler pages deploy dist --project-name aura-motion --branch main
 ```
+（プロジェクト `aura-motion` は作成済みです。新しく作る場合は `npx wrangler pages project create <名前> --production-branch main` を実行します。
+新しい Wrangler は Pages のコマンドを Workers に回そうとするので、**作成時だけ** `--force` を付けてください）
 初回は `npx wrangler login` でブラウザからログインします（無料プランで動き、クレジットカードの登録は不要です）。
 
 ビルドの最後に `scripts/check-pages-limits.mjs` が、Pages の制限（1ファイル 25 MiB 以下、20,000 ファイル以下など）を自動で確認します。

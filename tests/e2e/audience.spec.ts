@@ -10,7 +10,7 @@ test('audience window mirrors live score and ranking', async ({ context, baseURL
     if (!r.url().startsWith(origin) && !r.url().startsWith('data:') && !r.url().startsWith('blob:')) external.push(r.url());
   });
   const aud = await context.newPage();
-  await aud.goto('/audience.html');
+  await aud.goto('/audience');
   const game = await context.newPage();
   await game.goto(`/${FAST}`);
   await waitFor(game, (s) => s.phase === 'play' && (s.score ?? 0) > 0, 90_000);

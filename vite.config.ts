@@ -34,7 +34,10 @@ function serviceWorkerPlugin(): Plugin {
       }
       const version = h.digest('hex').slice(0, 12);
       const tpl = readFileSync('src/sw/sw.template.js', 'utf8');
-      const sw = tpl.replace('__VERSION__', version).replace('__PRECACHE__', JSON.stringify(['./', ...precache.map((f) => `./${f}`)]));
+      // Cloudflare Pages serves "x.html" at "/x" (308 redirect), so precache the
+      // extensionless URL; index.html is covered by "./".
+      const urls = precache.filter((f) => f !== 'index.html').map((f) => (f.endsWith('.html') ? `./${f.slice(0, -5)}` : `./${f}`));
+      const sw = tpl.replace('__VERSION__', version).replace('__PRECACHE__', JSON.stringify(['./', ...urls]));
       writeFileSync(join(outDir, 'sw.js'), sw);
       // Cloudflare Pages headers (also applied by vite preview below).
       const headers = [

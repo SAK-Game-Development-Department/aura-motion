@@ -289,7 +289,7 @@ export class App {
       this.forceSeated = !this.forceSeated;
     } else if (k === 'a' && !e.repeat && this.source?.kind !== 'mouse') {
       // Audience window for a second monitor (same browser; BroadcastChannel).
-      window.open('./audience.html', 'aura-audience', 'popup');
+      window.open('./audience', 'aura-audience', 'popup');
     } else if (k === 'p' && this.rt.dev && !e.repeat) {
       this.toggleRecording();
     }

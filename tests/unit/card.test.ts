@@ -6,7 +6,7 @@ describe('result card', () => {
   it('round-trips through the URL fragment (never the query)', () => {
     const url = cardUrl('https://aura.example.pages.dev/', d);
     const u = new URL(url);
-    expect(u.pathname).toBe('/card.html');
+    expect(u.pathname).toBe('/card');
     expect(u.search).toBe('');
     expect(parseCard(u.hash)).toEqual(d);
   });
