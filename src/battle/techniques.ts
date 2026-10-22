@@ -1,4 +1,4 @@
-// Technique catalogue. Plain, game-like names (no made-up kanji compounds). A technique is defined by
+// Technique catalogue. Short katakana names from light / astronomy / physics words (no made-up kanji compounds). A technique is defined by
 // what the player does (requirement) and how it looks (effect kind + colour).
 import type { Flags } from "../config/flags";
 import type { GestureEvent } from "../gesture/engine";
@@ -56,7 +56,7 @@ export interface Technique {
 export const TECHNIQUES: Technique[] = [
   {
     id: "saiko",
-    name: "バースト",
+    name: "フレア",
     reading: "握る",
     req: { kind: "shape", shape: "fist" },
     effect: "burst",
@@ -66,7 +66,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "hamon",
-    name: "ウェーブ",
+    name: "パルス",
     reading: "開く",
     req: { kind: "shape", shape: "open" },
     effect: "wave",
@@ -76,7 +76,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "sen",
-    name: "ビーム",
+    name: "レーザー",
     reading: "指す",
     req: { kind: "shape", shape: "point" },
     effect: "beam",
@@ -86,7 +86,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "sosen",
-    name: "ダブルビーム",
+    name: "ツインレーザー",
     reading: "二指",
     req: { kind: "shape", shape: "two" },
     effect: "twinbeam",
@@ -96,7 +96,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "nui",
-    name: "バインド",
+    name: "ラッソ",
     reading: "摘む",
     req: { kind: "shape", shape: "pinch" },
     effect: "bind",
@@ -106,7 +106,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "kakurai",
-    name: "サンダー",
+    name: "ライトニング",
     reading: "角",
     req: { kind: "shape", shape: "horn" },
     effect: "lightning",
@@ -116,7 +116,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "tomoshibi",
-    name: "フレア",
+    name: "オーブ",
     reading: "親指",
     req: { kind: "shape", shape: "thumb" },
     effect: "flare",
@@ -126,7 +126,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "kagi",
-    name: "フック",
+    name: "グラップル",
     reading: "鉤",
     req: { kind: "shape", shape: "ell" },
     effect: "hook",
@@ -136,7 +136,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "sho",
-    name: "ショック",
+    name: "インパクト",
     reading: "握る → 押す",
     req: { kind: "motion", shape: "fist", motion: "push" },
     effect: "shock",
@@ -146,7 +146,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "nagi",
-    name: "スラッシュ",
+    name: "クレセント",
     reading: "開く → 払う",
     req: { kind: "motion", shape: "open", motion: "swipe" },
     effect: "slash",
@@ -156,7 +156,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "hajiki",
-    name: "ショット",
+    name: "スナイプ",
     reading: "握る → 弾く",
     req: { kind: "motion", shape: "fist", motion: "flick" },
     effect: "bullet",
@@ -166,7 +166,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "juji",
-    name: "クロス",
+    name: "ツインエッジ",
     reading: "二指 → 払う",
     req: { kind: "motion", shape: "two", motion: "swipe" },
     effect: "cross",
@@ -176,7 +176,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "heki",
-    name: "バリア",
+    name: "シールド",
     reading: "開く → 押す",
     req: { kind: "motion", shape: "open", motion: "push" },
     effect: "barrier",
@@ -186,7 +186,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "enjin",
-    name: "サークル",
+    name: "オービット",
     reading: "指で円を描く",
     req: { kind: "sigil", sigil: "circle" },
     effect: "sigil",
@@ -196,7 +196,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "sanjin",
-    name: "トライアングル",
+    name: "プリズム",
     reading: "指で三角を描く",
     req: { kind: "sigil", sigil: "triangle" },
     effect: "sigil",
@@ -206,7 +206,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "raijin",
-    name: "ジグザグ",
+    name: "アーク",
     reading: "指でジグザグを描く",
     req: { kind: "sigil", sigil: "zigzag" },
     effect: "sigil",
@@ -216,7 +216,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "uzujin",
-    name: "スパイラル",
+    name: "サイクロン",
     reading: "指で渦を描く",
     req: { kind: "sigil", sigil: "spiral" },
     effect: "sigil",
@@ -226,7 +226,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "kaibyaku",
-    name: "ビッグバン",
+    name: "スーパーノヴァ",
     reading: "両手を合わせて開く",
     req: { kind: "spread" },
     effect: "nova",
@@ -238,7 +238,7 @@ export const TECHNIQUES: Technique[] = [
   // Two-hand poses (seals). Each has a one-hand alternative.
   {
     id: "in-gassho",
-    name: "合掌",
+    name: "ユニゾン",
     reading: "両手を合わせる",
     req: { kind: "seal", seal: "gassho" },
     effect: "seal",
@@ -249,7 +249,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "in-kensho",
-    name: "グーとパー",
+    name: "アンヴィル",
     reading: "グーを手のひらに当てる",
     req: { kind: "seal", seal: "kensho" },
     effect: "seal",
@@ -260,7 +260,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "in-soshi",
-    name: "指タッチ",
+    name: "サーキット",
     reading: "人差し指の先を合わせる",
     req: { kind: "seal", seal: "soshi" },
     effect: "seal",
@@ -271,7 +271,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "in-kanmon",
-    name: "フレーム",
+    name: "フォーカス",
     reading: "L字で窓を作る",
     req: { kind: "seal", seal: "kanmon" },
     effect: "seal",
@@ -282,7 +282,7 @@ export const TECHNIQUES: Technique[] = [
   },
   {
     id: "in-kosa",
-    name: "クロスチョキ",
+    name: "クロスファイア",
     reading: "チョキを交差させる",
     req: { kind: "seal", seal: "kosa" },
     effect: "seal",
@@ -379,13 +379,7 @@ export function matches(req: Req, e: GestureEvent): boolean {
   }
 }
 
-const SEAL_NAME: Record<SealKind, string> = {
-  gassho: "合掌",
-  kensho: "拳掌",
-  soshi: "双指",
-  kanmon: "環門",
-  kosa: "交差",
-};
+const SEAL_NAME: Record<SealKind, string> = { gassho: 'ユニゾン', kensho: 'アンヴィル', soshi: 'サーキット', kanmon: 'フォーカス', kosa: 'クロスファイア' };
 const MOTION_VERB = {
   swipe: "払う",
   push: "押す",

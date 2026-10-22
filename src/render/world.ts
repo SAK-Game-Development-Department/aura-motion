@@ -108,6 +108,9 @@ export class WorldView {
     }
   }
 
+  /** Staff effects strength (0..1): scales flashes, shakes, zoom punches and colour fringing. */
+  effectScale = 1;
+
   setCalm(calm: boolean, flash: number, shake: number): void {
     this.flash.intensity = calm ? SAFETY.calmFlashIntensity : flash;
     this.shake.intensity = calm ? SAFETY.calmShakeIntensity : shake;
@@ -139,7 +142,7 @@ export class WorldView {
 
   punch(amount: number, aberration = amount): void {
     if (!this.fxEnabled) return;
-    this.punchV = Math.min(1, this.punchV + amount * Math.max(0.2, this.shake.intensity + 0.3));
+    this.punchV = Math.min(1, this.punchV + amount * Math.max(0.2, this.shake.intensity + 0.3) * this.effectScale);
     this.aberr = Math.min(1, this.aberr + aberration);
   }
 
@@ -221,7 +224,7 @@ export class WorldView {
     this.aberr *= Math.exp(-f.dt * 5);
     this.gfx.camera.zoom = 1 + this.punchV * 0.07;
     this.gfx.camera.updateProjectionMatrix();
-    this.gfx.uAberration.value = 0.12 + this.aberr * 1.6;
+    this.gfx.uAberration.value = (0.12 + this.aberr * 1.6) * this.effectScale;
     this.gfx.uVignette.value = 0.45 + this.bg.uDim.value * 0.4;
     // Charging hands stir a vortex in the particle field.
     if (this.particles) {

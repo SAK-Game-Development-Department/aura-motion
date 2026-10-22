@@ -7,7 +7,7 @@
 //
 // Handles camera errors (→ mouse emergency mode), tracking stalls (→ restart),
 // exceptions (→ soft reset), empty booth (→ title) and a stalled loop (→ reload).
-import { EXHIBIT, GESTURE, HAND, JUDGE, LATENCY, RENDER, TRACKING } from './config';
+import { EXHIBIT, GESTURE, HAND, JUDGE, LATENCY, RENDER, SAFETY, SETTINGS, TRACKING } from './config';
 import type { Runtime } from './config/runtime';
 import { Ring } from './core/math';
 import type { FieldFrame, PoseFrame } from './core/types';
@@ -33,6 +33,8 @@ import { QualityGovernor } from './render/quality';
 import { WorldView, type WorldTheme } from './render/world';
 import { Hud } from './ui/hud';
 import { TechLens } from './ui/techLens';
+import { SettingsPanel } from './ui/settingsPanel';
+import { loadSettings, saveSettings, type Settings } from './exhibit/settings';
 import { battleBot } from './battle/bot';
 import { BattleSession, type BattleEvent } from './battle/session';
 import { generateValidBattle, type BattleStage } from './battle/stage';
@@ -60,6 +62,9 @@ export class App {
   private lens!: TechLens;
   /** Tech Lens: auto (attract demo and results), or forced on/off with T. */
   private lensMode: 'auto' | 'on' | 'off' = 'auto';
+  /** Staff settings (S key), saved in this browser. */
+  private settings: Settings = loadSettings();
+  private settingsPanel!: SettingsPanel;
   private source: InputSource | null = null;
   private sourceOff: Array<() => void> = [];
   readonly engine: GestureEngine;
@@ -155,7 +160,7 @@ export class App {
     this.hud.setLoading(0.02, '画面を準備中…');
     this.debug = new DebugOverlay(document.body);
     this.lens = new TechLens(document.body);
-    this.online = new OnlineRanking(this.rt.flags.online);
+    this.online = new OnlineRanking(this.rt.flags.online && this.settings.online);
     if (this.rt.debug) this.debug.toggle(true);
 
     this.gfx = await Gfx.create(this.canvas, { forceWebGL: this.rt.forceWebGL });
@@ -163,9 +168,13 @@ export class App {
     const maxParticles = this.rt.flags.particles ? RENDER.particleLevels[this.quality.maxParticleLevel]! : 0;
     this.world = new WorldView(this.gfx, maxParticles, TRACKING.fieldW, TRACKING.fieldH);
     this.world.fxEnabled = this.rt.flags.fx;
-    this.applyCalm();
-    this.world.particles?.setCount(this.rt.particles ?? this.quality.particles);
     this.battleView = new BattleView(this.gfx, this.world);
+    this.settingsPanel = new SettingsPanel(document.body, () => this.settings, (s) => {
+      this.settings = s;
+      saveSettings(s);
+      this.applySettings();
+    });
+    this.applySettings();
 
     window.addEventListener('resize', () => this.gfx.resize());
     window.addEventListener('keydown', (e) => this.onKey(e));
@@ -297,6 +306,7 @@ export class App {
     const k = e.key.toLowerCase();
     if (this.source?.kind === 'mouse' && /^[0-9]$|^arrow|^[+=\-gz ]$/.test(k)) return; // mouse-mode controls
     if (this.phase === 'select' && /^[123]$/.test(k)) this.selector?.choose(Number(k) - 1);
+    if (k === 's' && !e.repeat) this.settingsPanel.toggle();
     if (k === 'd') this.debug.toggle();
     else if (k === 't' && !e.repeat) this.lensMode = this.lensMode === 'auto' ? (this.lens.visible ? 'off' : 'on') : this.lensMode === 'on' ? 'off' : 'auto';
     else if (k === 'f') {
@@ -313,8 +323,30 @@ export class App {
   }
 
   private applyCalm(): void {
-    this.world.setCalm(this.calm, 0.8, 0.6);
+    const e = this.settings.effects;
+    this.world.setCalm(this.calm, SAFETY.defaultFlashIntensity * e, SAFETY.defaultShakeIntensity * e);
     document.body.classList.toggle('calm', this.calm);
+  }
+
+  /** Push the staff settings into the renderer, effects, particles and features. */
+  private applySettings(): void {
+    const s = this.settings;
+    this.gfx.uExposure.value = s.brightness;
+    this.gfx.bloomStrength = RENDER.bloom.strength * s.glow;
+    this.world.bg.uGain.value = s.background;
+    this.world.effectScale = s.effects;
+    this.applyCalm();
+    this.gfx.setEffects(this.quality.state.effects && this.rt.flags.fx, this.quality.state.lens && s.lens);
+    this.world.particles?.setCount(this.particleCount());
+    this.lensMode = s.techLens;
+    if (this.online) this.online.enabled = this.rt.flags.online && s.online;
+  }
+
+  private particleCount(): number {
+    if (this.rt.particles !== null) return this.rt.particles;
+    const p = this.settings.particles;
+    if (p === 'auto') return this.quality.particles;
+    return RENDER.particleLevels[Math.min(SETTINGS.particleLevel[p], this.quality.maxParticleLevel)]!;
   }
 
   // ───────────────────────── phases ─────────────────────────
@@ -470,7 +502,7 @@ export class App {
       stage: `${lv.level}「${def.name}」`,
       flow: 0,
       isBest: sc.score > todayBest && sc.score > 0,
-      extra: `<span>撃破 <b>${b.kills}</b></span>${b.ultimates - (b.hiddenCleared ? 1 : 0) > 0 ? `<span><b>${FINISH.name}</b>成功</span>` : `<span>${def.boss.name}を逃した</span>`}${b.hiddenCleared ? `<span>隠しボス<b>${HIDDEN_BOSS.name}</b>撃破！</span>` : ''}`,
+      extra: `<span>撃破 <b>${b.kills}</b></span>${b.ultimates - (b.hiddenCleared ? 1 : 0) > 0 ? `<span><b>${FINISH.name}</b>を決めた</span>` : `<span>${def.boss.name}を逃した</span>`}${b.hiddenCleared ? `<span>隠しボス<b>${HIDDEN_BOSS.name}</b>撃破！</span>` : ''}`,
     });
     this.hud.setMarks([]);
     this.setPhase('results');
@@ -552,9 +584,9 @@ export class App {
     this.debug.pushFrame(dtMs);
     if (this.rt.bench) this.runBench(now, dtMs);
     else if (this.phase !== 'loading' && !this.rt.virtualTime && this.quality.sample(now, dtMs)) {
-      this.world.particles?.setCount(this.rt.particles ?? this.quality.particles);
+      this.world.particles?.setCount(this.particleCount());
       this.gfx.setResolutionScale(this.quality.resolutionScale);
-      this.gfx.setEffects(this.quality.state.effects && this.rt.flags.fx, this.quality.state.lens);
+      this.gfx.setEffects(this.quality.state.effects && this.rt.flags.fx, this.quality.state.lens && this.settings.lens);
     }
 
     this.source?.tick(now);
@@ -649,7 +681,7 @@ export class App {
         const b = this.battle!;
         const gt = now - this.playStart;
         for (const e of events) b.pushEvent(e.t - this.playStart - this.offsetMs, e);
-        this.engine.expectSeals = b.expectedSeals(gt, this.sealSet);
+        this.engine.expectSeals = this.settings.sealAssist ? b.expectedSeals(gt, this.sealSet) : new Set();
         const bev = b.update(gt);
         this.handleBattleEvents(bev, now, gt, g);
         ghost = this.tutorialGhost(b, gt, g);
@@ -1091,6 +1123,8 @@ export class App {
   /** Test hook (E2E/soak). */
   inspect(): Record<string, unknown> {
     return {
+      settings: this.settings,
+      exposure: this.gfx?.uExposure.value ?? null,
       stage: this.stageId,
       t: this.clock(),
       gameT: this.phase === 'play' ? this.clock() - this.playStart : null,

@@ -31,7 +31,7 @@ export class OnlineRanking {
   private inflight = new Set<string>();
 
   constructor(
-    readonly enabled: boolean,
+    public enabled: boolean,
     private fetchFn: FetchFn = (i, init) => fetch(i, init),
     private now: () => number = () => performance.now(),
   ) {}

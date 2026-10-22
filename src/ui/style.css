@@ -189,3 +189,22 @@ body.calm .cutin .kanji { animation-name: kanjiCalm !important; }
 .ranking .online .place b { font-size: 1.3em; color: var(--white); }
 .ranking .online .place small { color: var(--dim); }
 .ranking li em { display: block; font-style: normal; font-size: .62em; color: var(--dim); letter-spacing: .05em; }
+
+/* Staff settings (S) */
+.settings { position: fixed; right: 2vw; top: 3vh; width: min(460px, 92vw); max-height: 94vh; overflow: auto; z-index: 50; display: none; pointer-events: auto;
+  padding: 18px 22px; border-radius: 14px; background: rgba(6,8,22,.92); border: 1px solid rgba(63,242,255,.35); box-shadow: 0 0 30px rgba(63,242,255,.2);
+  font-size: 15px; color: var(--white); cursor: default; }
+.settings.on { display: block; }
+.settings h2 { margin: 0 0 12px; font-size: 20px; font-weight: 600; letter-spacing: .1em; }
+.settings h2 small { font-size: 12px; color: var(--dim); font-weight: 400; margin-left: .6em; letter-spacing: 0; }
+.settings .row { display: grid; grid-template-columns: 1fr 150px 48px; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(244,247,255,.08); }
+.settings .row.chk { grid-template-columns: 1fr auto; }
+.settings .row select { grid-column: 2 / 4; }
+.settings .lb em { display: block; font-style: normal; font-size: 12px; color: var(--dim); margin-top: 2px; }
+.settings input[type=range] { width: 100%; accent-color: #3ff2ff; }
+.settings input[type=checkbox] { width: 20px; height: 20px; accent-color: #3ff2ff; }
+.settings output { text-align: right; font-variant-numeric: tabular-nums; color: var(--cyan); }
+.settings select, .settings button { font: inherit; color: var(--white); background: rgba(244,247,255,.08); border: 1px solid rgba(244,247,255,.2); border-radius: 8px; padding: 6px 10px; }
+.settings .btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+.settings button { cursor: pointer; }
+.settings button:hover { border-color: var(--cyan); }

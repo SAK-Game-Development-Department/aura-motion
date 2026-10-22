@@ -2,11 +2,11 @@
 // gestures that stay readable for a hand tracker (no interlaced fingers —
 // fully interlocked hands make the landmark model lose the hands).
 //
-//   gassho  合  palms pressed together, fingers up
-//   kensho  拳掌 a fist pressed into the other open palm
-//   soshi   双指 both index fingers pointing, fingertips touching
-//   kanmon  環門 thumbs and index fingers form a frame (thumb tips touching)
-//   kosa    交差 both "two" (V) hands crossed in front of the chest
+//   gassho  ユニゾン     palms pressed together, fingers up
+//   kensho  アンヴィル   a fist pressed into the other open palm
+//   soshi   サーキット   both index fingers pointing, fingertips touching
+//   kanmon  フォーカス   thumbs and index fingers form a frame (thumb tips touching)
+//   kosa    クロスファイア both "two" (V) hands crossed in front of the chest
 import { GESTURE } from '../config';
 import { HL, type Vec2 } from '../core/types';
 import type { ShapeId } from './handModel';
@@ -14,8 +14,8 @@ import type { ShapeId } from './handModel';
 export type SealKind = 'gassho' | 'kensho' | 'soshi' | 'kanmon' | 'kosa';
 export const SEAL_IDS: SealKind[] = ['gassho', 'kensho', 'soshi', 'kanmon', 'kosa'];
 
-export const SEAL_KANJI: Record<SealKind, string> = { gassho: '合掌', kensho: 'グーとパー', soshi: '指タッチ', kanmon: 'フレーム', kosa: 'クロスチョキ' };
-export const SEAL_READING: Record<SealKind, string> = { gassho: 'がっしょう', kensho: 'けんしょう', soshi: 'そうし', kanmon: 'かんもん', kosa: 'こうさ' };
+export const SEAL_KANJI: Record<SealKind, string> = { gassho: 'ユニゾン', kensho: 'アンヴィル', soshi: 'サーキット', kanmon: 'フォーカス', kosa: 'クロスファイア' };
+export const SEAL_READING: Record<SealKind, string> = { gassho: '両手を合わせる', kensho: 'グーを手のひらに当てる', soshi: '人差し指の先を合わせる', kanmon: 'L字で窓を作る', kosa: 'チョキを交差させる' };
 
 /** What a seal needs from each hand (order-free) and how close things must be (palm units). */
 interface SealDef {

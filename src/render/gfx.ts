@@ -40,10 +40,11 @@ export class Gfx {
     const ca = (chromaticAberration as N)(lit, this.uAberration, vec2(0.5, 0.5), 1.08) as N;
     const r = length(uv().sub(0.5).mul(1.6)) as N;
     const vig = float(1).sub(smoothstep(0.55, 1.25, r).mul(this.uVignette)) as N;
-    this.bloomOn = new THREE.RenderPipeline(renderer, vec4(ca.rgb.mul(vig) as N, float(1) as N) as N);
+    // Exposure: the staff brightness setting scales the final picture.
+    this.bloomOn = new THREE.RenderPipeline(renderer, vec4(ca.rgb.mul(vig).mul(this.uExposure) as N, float(1) as N) as N);
     // Without the lens pass (one render target less) for slower GPUs.
-    this.bloomNoLens = new THREE.RenderPipeline(renderer, vec4(lit.rgb.mul(vig) as N, float(1) as N) as N);
-    this.bloomOff = new THREE.RenderPipeline(renderer, color);
+    this.bloomNoLens = new THREE.RenderPipeline(renderer, vec4(lit.rgb.mul(vig).mul(this.uExposure) as N, float(1) as N) as N);
+    this.bloomOff = new THREE.RenderPipeline(renderer, vec4((color as N).rgb.mul(this.uExposure) as N, float(1) as N) as N);
     this.pipeline = this.bloomOn;
   }
 
@@ -67,6 +68,8 @@ export class Gfx {
   /** Lens uniforms (driven by the world view). */
   readonly uAberration = uniform(0.15);
   readonly uVignette = uniform(0.45);
+  /** Overall exposure (staff brightness setting). */
+  readonly uExposure = uniform(1);
 
   set bloomStrength(v: number) {
     this.bloomNode.strength.value = v;

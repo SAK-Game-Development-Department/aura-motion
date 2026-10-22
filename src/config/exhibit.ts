@@ -39,3 +39,37 @@ export const TRACKING = {
    */
   workerInitTimeoutMs: 45_000,
 } as const;
+
+/**
+ * Staff settings (S key). Defaults are a little darker than the original look
+ * (the room light and projector vary; tune on site). Ranges are enforced when
+ * loading saved values.
+ */
+export const SETTINGS = {
+  defaults: {
+    /** Overall exposure of the picture. */
+    brightness: 0.85,
+    /** Bloom (glow) multiplier. */
+    glow: 0.8,
+    /** Background brightness multiplier. */
+    background: 0.9,
+    /** Flash / shake / zoom punch / colour fringing strength. */
+    effects: 0.7,
+    /** Chromatic aberration ("lens") pass. */
+    lens: true,
+    particles: 'auto' as 'auto' | 'low' | 'mid' | 'high',
+    techLens: 'auto' as 'auto' | 'on' | 'off',
+    /** Easier two-hand poses while the game waits for one. */
+    sealAssist: true,
+    /** Send camera plays to the shared ranking. */
+    online: true,
+  },
+  ranges: {
+    brightness: [0.4, 1.3],
+    glow: [0, 1.6],
+    background: [0, 1.5],
+    effects: [0, 1],
+  },
+  /** Particle presets → RENDER.particleLevels index. */
+  particleLevel: { low: 0, mid: 2, high: 4 },
+} as const;

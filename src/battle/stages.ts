@@ -1,5 +1,5 @@
-// Stages: three difficulties × three stages. Plain place names (no made-up
-// kanji titles); designs are original.
+// Stages: three difficulties × three stages. Short katakana names (the plain
+// Japanese name goes in `reading`, shown under the title); designs are original.
 // Each stage has its own spirits (look and colour), boss, backgrounds and a
 // flavour (which kind of technique it favours). The numbers that set how hard a
 // difficulty is live in src/config/game.ts (STAGE_TUNE).
@@ -58,84 +58,84 @@ const BASE_THEMES = (main: StageTheme, guard: StageTheme, boss: StageTheme): Rec
 export const STAGES: Record<StageId, StageDef> = {
   // ── 初級 ──
   yoi: {
-    id: 'yoi', difficulty: 'easy', name: '夜の湖', reading: 'よるのみずうみ',
+    id: 'yoi', difficulty: 'easy', name: 'ミラーレイク', reading: '月夜の湖',
     desc: '静かな湖に影がゆらゆら。まずはここから。',
     style: 'shade', decor: 'none', rim: 'magenta', rimWarden: 'cyan',
-    boss: { name: '湖のヌシ', reading: 'みずうみのぬし' },
+    boss: { name: 'ミラージュ', reading: '湖の幻' },
     themes: BASE_THEMES('lake', 'stars', 'eclipse'),
     calls: { intro: '湖から影が出てきた', rush: '影がたくさん来る！', guard: 'パーで押して攻撃を防ごう' },
     favor: ['shape'],
   },
   shinkai: {
-    id: 'shinkai', difficulty: 'easy', name: '深海', reading: 'しんかい',
+    id: 'shinkai', difficulty: 'easy', name: 'ディープブルー', reading: '深海',
     desc: '光の届かない海の底。ふわふわ漂うクラゲを、押す・払うで追い返そう。',
     style: 'jelly', decor: 'none', rim: 'cyan', rimWarden: 'white',
-    boss: { name: '巨大クラゲ', reading: 'きょだいくらげ' },
+    boss: { name: 'メデューサ', reading: '巨大クラゲ' },
     themes: BASE_THEMES('sea', 'sea', 'sea'),
     calls: { intro: 'クラゲが近づいてくる', rush: 'クラゲの大群！', guard: 'パーで押して触手を防ごう' },
     favor: ['motion'],
   },
   setsugetsu: {
-    id: 'setsugetsu', difficulty: 'easy', name: '雪の庭', reading: 'ゆきのにわ',
+    id: 'setsugetsu', difficulty: 'easy', name: 'フロストガーデン', reading: '白銀の庭',
     desc: '月明かりの雪の庭。氷の結晶がゆっくり降りてくる。',
     style: 'crystal', decor: 'snow', rim: 'white', rimWarden: 'cyan',
-    boss: { name: '氷の王様', reading: 'こおりのおうさま' },
+    boss: { name: 'スノークイーン', reading: '氷の女王' },
     themes: BASE_THEMES('snow', 'snow', 'eclipse'),
     calls: { intro: '雪の中に何かいる', rush: '吹雪といっしょに来る！', guard: 'パーで押して氷を防ごう' },
     favor: ['shape', 'seal'],
   },
   // ── 中級 ──
   hoshi: {
-    id: 'hoshi', difficulty: 'normal', name: '星空トンネル', reading: 'ほしぞらとんねる',
+    id: 'hoshi', difficulty: 'normal', name: 'スターロード', reading: '星の回廊',
     desc: '光が流れるトンネル。結晶の敵が列を作って向かってくる。',
     style: 'crystal', decor: 'none', rim: 'cyan', rimWarden: 'white',
-    boss: { name: '星の門番', reading: 'ほしのもんばん' },
+    boss: { name: 'ゲートキーパー', reading: '星の門番' },
     themes: BASE_THEMES('stars', 'crystal', 'crystal'),
     calls: { intro: '結晶が動き出した', rush: '列になって来る！', guard: '突進してくる！パーで押して防ごう' },
     favor: ['shape', 'motion'],
   },
   raimei: {
-    id: 'raimei', difficulty: 'normal', name: '雷の山', reading: 'かみなりのやま',
+    id: 'raimei', difficulty: 'normal', name: 'サンダーピーク', reading: '雷鳴の峰',
     desc: '雷雲の山。ビリビリした敵には、払う・弾くの速い技で。',
     style: 'crystal', decor: 'arcs', rim: 'amber', rimWarden: 'white',
-    boss: { name: 'カミナリ雲', reading: 'かみなりぐも' },
+    boss: { name: 'ストームクラウド', reading: '雷雲' },
     themes: BASE_THEMES('thunder', 'thunder', 'storm'),
     calls: { intro: '雷雲の中に何かいる', rush: '稲妻みたいに速いぞ！', guard: '落雷！パーで押して防ごう' },
     favor: ['motion'],
   },
   hanagasumi: {
-    id: 'hanagasumi', difficulty: 'normal', name: '花の丘', reading: 'はなのおか',
+    id: 'hanagasumi', difficulty: 'normal', name: 'ブロッサムヒル', reading: '花吹雪の丘',
     desc: '花びらが舞う丘。両手ポーズと指で描く図形で戦う。',
     style: 'shade', decor: 'petals', rim: 'magenta', rimWarden: 'amber',
-    boss: { name: '桜の大木', reading: 'さくらのたいぼく' },
+    boss: { name: '千年桜', reading: 'せんねんざくら' },
     themes: BASE_THEMES('petal', 'petal', 'eclipse'),
     calls: { intro: '花の向こうに影がいる', rush: '花吹雪といっしょに来る！', guard: 'パーで押して受け止めよう' },
     favor: ['seal', 'sigil'],
   },
   // ── 上級 ──
   guren: {
-    id: 'guren', difficulty: 'hard', name: '炎の原っぱ', reading: 'ほのおのはらっぱ',
-    desc: '燃える原っぱ。火の玉の大群と炎の大将。',
+    id: 'guren', difficulty: 'hard', name: 'インフェルノ', reading: '灼熱の荒野',
+    desc: '燃えさかる荒野。火の玉の大群と、炎をまとう巨人。',
     style: 'flame', decor: 'none', rim: 'vermilion', rimWarden: 'magenta',
-    boss: { name: '炎の大将', reading: 'ほのおのたいしょう' },
+    boss: { name: 'ボルケーノ', reading: '炎の巨人' },
     themes: BASE_THEMES('ember', 'storm', 'ember'),
     calls: { intro: '炎の中から出てきた', rush: '火の玉の大群！', guard: '突進！パーで押して防ごう' },
     favor: ['shape', 'motion'],
   },
   gesshoku: {
-    id: 'gesshoku', difficulty: 'hard', name: '月食の夜', reading: 'げっしょくのよる',
+    id: 'gesshoku', difficulty: 'hard', name: 'エクリプス', reading: '月食の夜',
     desc: '黒い月の下。白く光る影が、両手ポーズを次々に求めてくる。',
     style: 'shade', decor: 'none', rim: 'white', rimWarden: 'amber',
-    boss: { name: '黒い月', reading: 'くろいつき' },
+    boss: { name: 'ブラックムーン', reading: '黒い月' },
     themes: BASE_THEMES('eclipse', 'stars', 'eclipse'),
     calls: { intro: '月が欠けてきた…', rush: '影の群れ！', guard: 'パーで押して防ごう' },
     favor: ['seal', 'shape'],
   },
   kokuu: {
-    id: 'kokuu', difficulty: 'hard', name: '大きな渦', reading: 'おおきなうず',
+    id: 'kokuu', difficulty: 'hard', name: 'ストームアイ', reading: '嵐の中心',
     desc: '全部を吸い込む渦の中。いちばん速い戦い。',
     style: 'jelly', decor: 'arcs', rim: 'magenta', rimWarden: 'cyan',
-    boss: { name: '渦の目', reading: 'うずのめ' },
+    boss: { name: 'ボルテックス', reading: '渦の王' },
     themes: BASE_THEMES('storm', 'thunder', 'storm'),
     calls: { intro: '渦から何か出てくる', rush: '渦に乗って大群が来る！', guard: 'パーで押して防ごう' },
     favor: ['sigil', 'motion'],
@@ -148,7 +148,7 @@ export function stagesOf(d: DifficultyId): StageDef[] {
   return STAGE_IDS.map((id) => STAGES[id]).filter((s) => s.difficulty === d);
 }
 
-export const HIDDEN_BOSS = { name: '謎の影', reading: '隠しボス' } as const;
+export const HIDDEN_BOSS = { name: 'ボイド', reading: '隠しボス' } as const;
 /** The finishing move on a boss, and on the hidden boss. */
-export const FINISH = { name: 'フィニッシュ', reading: 'ボスにとどめ' } as const;
-export const FINISH_HIDDEN = { name: '完全勝利', reading: '隠しボスにとどめ' } as const;
+export const FINISH = { name: 'ゼニス', reading: 'ボスにとどめ' } as const;
+export const FINISH_HIDDEN = { name: 'ビッグバン', reading: '隠しボスにとどめ' } as const;

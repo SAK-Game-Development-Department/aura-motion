@@ -12,7 +12,7 @@ export interface ScoreEntry {
   stage?: string;
   /** Difficulty ('easy' | 'normal' | 'hard'). Rankings are per difficulty. */
   diff?: string;
-  /** Stage name for display (e.g. 宵ノ湖). */
+  /** Stage name for display (e.g. ミラーレイク). */
   stageName?: string;
 }
 

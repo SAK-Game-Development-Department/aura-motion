@@ -17,7 +17,7 @@ test('results submit only the score payload and show the nationwide ranking', as
       posts.push(JSON.parse(r.request().postData() ?? '{}'));
       return r.fulfill({ json: { placeAll: 3, placeToday: 1, total: 42, region: '東京' } });
     }
-    return r.fulfill({ json: { list: [{ name: '光るクラゲ', score: 99999, rank: 'S', stage: 'hoshi', stageName: '星空トンネル', region: '大阪', at: 0 }], total: 42 } });
+    return r.fulfill({ json: { list: [{ name: '光るクラゲ', score: 99999, rank: 'S', stage: 'hoshi', stageName: 'スターロード', region: '大阪', at: 0 }], total: 42 } });
   });
   await page.goto('/?source=autoplay&fast=1&flags=-particles&onlinetest=1');
   await waitFor(page, (s) => s.phase === 'results', 150_000);

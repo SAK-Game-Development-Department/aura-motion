@@ -67,7 +67,7 @@ describe('shared ranking: client', () => {
     const urls: string[] = [];
     const o = new OnlineRanking(true, async (u) => {
       urls.push(u);
-      return new Response(JSON.stringify({ list: [{ name: 'a', score: 1, rank: 'A', stage: 'yoi', stageName: '夜の湖', region: '東京', at: 0 }], total: 1 }), { status: 200 });
+      return new Response(JSON.stringify({ list: [{ name: 'a', score: 1, rank: 'A', stage: 'yoi', stageName: 'ミラーレイク', region: '東京', at: 0 }], total: 1 }), { status: 200 });
     }, () => 1000);
     const b = await o.refresh('easy', 'today');
     await o.refresh('easy', 'today');

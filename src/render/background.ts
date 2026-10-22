@@ -30,6 +30,8 @@ export class Background {
   readonly uEclipse = uniform(0);
   readonly uStorm = uniform(0);
   readonly uEmber = uniform(0);
+  /** Background brightness (staff setting). */
+  readonly uGain = uniform(1);
   readonly uSea = uniform(0);
   readonly uSnow = uniform(0);
   readonly uThunder = uniform(0);
@@ -53,7 +55,7 @@ export class Background {
     const nebulaC = vec3(...hexToLinear('#3a4cc0'));
     // Shared helpers (each material builds its own nodes).
     const P = () => uv().sub(0.5).mul(vec2(this.uAspect, 1)) as N;
-    const darkK = () => float(1).sub(max(this.uDim, this.uDomain.mul(0.6)).mul(0.85)) as N;
+    const darkK = () => float(1).sub(max(this.uDim, this.uDomain.mul(0.6)).mul(0.85)).mul(this.uGain) as N;
     const t = this.uTime;
     mat.colorNode = (() => {
       const p = P();
