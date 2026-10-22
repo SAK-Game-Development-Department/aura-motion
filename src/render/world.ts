@@ -17,6 +17,7 @@ export const C = {
   cyan: hexToLinear(PALETTE.cyan) as RGB,
   magenta: hexToLinear(PALETTE.magenta) as RGB,
   amber: hexToLinear(PALETTE.amber) as RGB,
+  vermilion: hexToLinear(PALETTE.vermilion) as RGB,
   white: hexToLinear(PALETTE.white) as RGB,
   dim: [0.05, 0.07, 0.2] as RGB,
   ghost: [0.35, 0.42, 0.9] as RGB,
@@ -67,7 +68,7 @@ export function shapeColor(s: ShapeId): RGB {
   return s === 'fist' || s === 'thumb' || s === 'horn' ? C.amber : s === 'open' || s === 'pinch' ? C.cyan : C.magenta;
 }
 
-export type WorldTheme = 'lake' | 'stars' | 'crystal' | 'eclipse' | 'storm' | 'none';
+export type WorldTheme = 'lake' | 'stars' | 'crystal' | 'eclipse' | 'storm' | 'ember' | 'none';
 
 export class WorldView {
   readonly bg = new Background();
@@ -201,6 +202,7 @@ export class WorldView {
     B.uCrystal.value += (target('crystal') - B.uCrystal.value) * tw;
     B.uEclipse.value += (target('eclipse') - B.uEclipse.value) * tw;
     B.uStorm.value += (target('storm') - B.uStorm.value) * tw;
+    B.uEmber.value += (target('ember') - B.uEmber.value) * tw;
     B.syncLayers();
     B.uWarp.value += ((f.energy > 0.5 ? 1.6 : 0.8) - B.uWarp.value) * tw;
 

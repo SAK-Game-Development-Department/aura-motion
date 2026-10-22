@@ -3,18 +3,20 @@
 import { expect, test } from '@playwright/test';
 import { FAST, state, testHook, waitFor } from './helpers';
 
-test('full loop: hand shown → calibration → battle (all sections, boss ultimate) → results → title', async ({ page }) => {
+test('full loop: hand shown → stage selection → calibration → battle (all sections, boss ultimate) → results → title', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`/${FAST}`);
   const seen: string[] = [];
   const s0 = await waitFor(page, (s) => s.phase === 'title', 60_000, seen);
   expect(['webgpu', 'webgl2']).toContain(s0.backend);
+  await waitFor(page, (s) => s.phase === 'select', 30_000, seen);
   await waitFor(page, (s) => s.phase === 'calibrate', 30_000, seen);
   await waitFor(page, (s) => s.phase === 'play', 40_000, seen);
   const st = await state(page);
   expect(st.thresholdsCalibrated).toBe(true);
   expect(st.calibrated).toBe(true);
+  expect(st.stage).toBe('normal'); // the bot holds its hand over the middle card
   const sections = new Set<string>();
   let last = st;
   await waitFor(
@@ -32,7 +34,7 @@ test('full loop: hand shown → calibration → battle (all sections, boss ultim
   expect(last.ultimates, JSON.stringify(last)).toBe(1);
   await page.screenshot({ path: 'test-results/results.png' });
   await waitFor(page, (s) => s.phase === 'title', 30_000, seen);
-  expect(seen.filter((x) => x !== 'loading').slice(0, 5)).toEqual(['title', 'calibrate', 'play', 'results', 'title']);
+  expect(seen.filter((x) => x !== 'loading').slice(0, 6)).toEqual(['title', 'select', 'calibrate', 'play', 'results', 'title']);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('aura.highscores.v1') ?? '[]'));
   expect(stored[0].score).toBeGreaterThan(0);
   expect(errors).toEqual([]);

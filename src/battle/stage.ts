@@ -3,7 +3,9 @@
 //   rush   – swarms of small spirits, two shielded ones (two techniques)
 //   guard  – strikers that attack (block with 障壁), a seal-breaker
 //   boss   – the Night Lord: a chain of seals → a drawn sigil → the ultimate
+import { STAGE_TUNE, type StageTune } from '../config';
 import { Rng } from '../core/rng';
+import type { StageId } from './stages';
 import { allowedTechniques, TECH, type Technique, type TechniqueFilter } from './techniques';
 
 export type EnemyKind = 'wisp' | 'warden' | 'striker' | 'breaker' | 'lord' | 'eclipse';
@@ -35,6 +37,12 @@ export interface Enemy {
 
 export interface BattleStage {
   seed: number;
+  /** Which stage (difficulty) this battle is. */
+  stageId: StageId;
+  /** Horizon → striking distance (ms). */
+  approachMs: number;
+  /** Timing window multiplier of the stage. */
+  window: number;
   durationMs: number;
   beatMs: number;
   sections: Array<{ kind: SectionKind; start: number; end: number }>;
@@ -50,9 +58,10 @@ export interface StageOptions extends TechniqueFilter {
   durationMs?: number;
   /** Two-hand seals usable (else their one-hand alternatives are required). */
   twoHandOk: boolean;
+  /** Stage / difficulty (default: normal). */
+  stage?: StageId;
 }
 
-export const APPROACH_MS = 2400;
 export const TUTORIAL_MS = 5200;
 
 const SECTIONS: Array<{ kind: SectionKind; len: number }> = [
@@ -64,10 +73,13 @@ const SECTIONS: Array<{ kind: SectionKind; len: number }> = [
 
 export function generateBattle(o: StageOptions): BattleStage {
   const durationMs = o.durationMs ?? 90_000;
+  const stageId = o.stage ?? 'normal';
+  const tune: StageTune = STAGE_TUNE[stageId];
+  const APPROACH_MS = tune.approachMs;
   const rng = new Rng(o.seed ^ 0xba771e);
-  const bpm = rng.int(84, 100);
+  const bpm = rng.int(tune.bpm[0], tune.bpm[1]);
   const beatMs = 60000 / bpm;
-  const allowed = allowedTechniques(o);
+  const allowed = allowedTechniques(o).filter((t) => tune.techniques === 'all' || tune.techniques.includes(t.id));
   const ids = new Set(allowed.map((t) => t.id));
   const pool = (pred: (t: Technique) => boolean) => allowed.filter(pred);
   const singles = pool((t) => t.req.kind === 'shape' || t.req.kind === 'motion').filter((t) => t.id !== 'heki');
@@ -100,7 +112,7 @@ export function generateBattle(o: StageOptions): BattleStage {
       let t = 1200;
       const tut = core.length ? core : singles.slice(0, 3);
       if (o.structure) {
-        const nTut = Math.max(1, Math.min(3, Math.floor((s.end + 2000) / (TUTORIAL_MS + 300))));
+        const nTut = Math.max(1, Math.min(tune.tutorials, Math.floor((s.end + 2000) / (TUTORIAL_MS + 300))));
         for (const tech of tut.slice(0, nTut)) {
           enemies.push({ id: id++, kind: 'wisp', spawn: t, arrive: t + 1600, deadline: t + TUTORIAL_MS, x: 0.5, y: 0.36, steps: [{ tech: tech.id, t: null }], tutorial: true, tier: 0 });
           t += TUTORIAL_MS + 300;
@@ -117,23 +129,29 @@ export function generateBattle(o: StageOptions): BattleStage {
       let t = snap(s.start + APPROACH_MS * 0.5);
       let wardens = 0;
       while (t < s.end - beatMs * 2) {
-        if (wardens < 2 && rng.chance(0.18) && singles.length > 1) {
-          // Shielded: two different techniques, 3 beats apart.
-          const a = rng.pick(singles);
-          let b = rng.pick(singles);
-          for (let k = 0; k < 4 && b.id === a.id; k++) b = rng.pick(singles);
-          add('warden', [{ tech: a.id, t }, { tech: b.id, t: snap(t + beatMs * 3) }], 0.5, 0.34);
+        if (wardens < tune.wardens && rng.chance(0.2) && singles.length > 1) {
+          // Shielded: different techniques in a row, 3 beats apart.
+          const steps: Step[] = [];
+          let prev = '';
+          for (let k = 0; k < tune.wardenSteps; k++) {
+            let x = rng.pick(singles);
+            for (let j = 0; j < 4 && x.id === prev; j++) x = rng.pick(singles);
+            steps.push({ tech: x.id, t: snap(t + beatMs * 3 * k) });
+            prev = x.id;
+          }
+          add('warden', steps, 0.5, 0.34);
           wardens++;
-          t = snap(t + beatMs * 6);
+          t = snap(t + beatMs * (3 * tune.wardenSteps));
           continue;
         }
-        // A small swarm: 2–3 spirits on consecutive (≥ 2) beats across lanes.
-        const n = rng.int(2, 3);
+        // A swarm on consecutive beats across lanes.
+        const n = rng.int(tune.swarm[0], tune.swarm[1]);
+        const gapB = tune.swarmGapBeats;
         for (let i = 0; i < n; i++) {
           const tech = rng.pick(singles);
-          add('wisp', [{ tech: tech.id, t: snap(t + i * beatMs * 2) }], lane(i, n), rng.range(0.28, 0.44), i === n - 1 ? 1 : 0);
+          add('wisp', [{ tech: tech.id, t: snap(t + i * beatMs * gapB) }], lane(i, n), rng.range(0.28, 0.44), i === n - 1 ? 1 : 0);
         }
-        t = snap(t + beatMs * (n * 2 + 1));
+        t = snap(t + beatMs * (n * gapB + tune.restBeats));
       }
     } else if (s.kind === 'guard') {
       let t = snap(s.start + APPROACH_MS * 0.6);
@@ -161,10 +179,12 @@ export function generateBattle(o: StageOptions): BattleStage {
       // The finisher also gets time to drop the previous seal before drawing.
       const finGap = fin.busyMs + 400;
       const room = s.end - 400 - lordAt - finGap;
-      const n = Math.max(1, Math.min(3, Math.floor(room / 1300)));
+      const n = Math.max(1, Math.min(tune.chain, Math.floor(room / 1300)));
       const gap = Math.max(1300, Math.min(beatMs * 4, room / n));
       let t = lordAt;
-      const chainTechs = seals.length ? rng.shuffle([...seals]).slice(0, n) : rng.shuffle([...singles]).slice(0, n);
+      // Seals first (no seal twice); a long chain is topped up with singles.
+      const chainTechs = [...(seals.length ? rng.shuffle([...seals]).slice(0, n) : [])];
+      while (chainTechs.length < n) chainTechs.push(rng.pick(singles));
       for (const tech of chainTechs) {
         chain.push({ tech: tech.id, t: Math.round(t) });
         t += gap;
@@ -183,7 +203,7 @@ export function generateBattle(o: StageOptions): BattleStage {
   }
   enemies.sort((a, b) => a.spawn - b.spawn || a.id - b.id);
   const poolIds = { singles: singles.map((t) => t.id), seals: seals.map((t) => t.id), sigils: sigils.map((t) => t.id) };
-  return repairBattle({ seed: o.seed, durationMs, beatMs, sections, enemies, repairs: 0, pool: poolIds }, o);
+  return repairBattle({ seed: o.seed, stageId, approachMs: APPROACH_MS, window: tune.window, durationMs, beatMs, sections, enemies, repairs: 0, pool: poolIds }, o);
 }
 
 // ───────────────────────── human-limit validation ─────────────────────────
@@ -222,7 +242,7 @@ export function validateBattle(s: BattleStage, o: Pick<StageOptions, 'oneHand' |
   }
   void o;
   const scoreable = tl.length + s.enemies.filter((e) => e.tutorial).length;
-  return { ok: v.length === 0, playable: scoreable >= Math.floor((s.durationMs / 1000) * 0.25) && s.enemies.some((e) => e.kind === 'lord' || s.sections.length === 1), violations: v };
+  return { ok: v.length === 0, playable: scoreable >= Math.floor((s.durationMs / 1000) * STAGE_TUNE[s.stageId].minDensity) && s.enemies.some((e) => e.kind === 'lord' || s.sections.length === 1), violations: v };
 }
 
 export function repairBattle(stage: BattleStage, o: Pick<StageOptions, 'oneHand' | 'twoHandOk'>): BattleStage {

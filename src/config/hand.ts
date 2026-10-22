@@ -7,6 +7,12 @@ export const HAND = {
   slotGraceMs: 300,
   /** Start: a hand in view & in range for this long (ms). */
   startHoldMs: 1500,
+  /** Stage selection: hold the hand over a card this long (ms); ignore the first moment after the screen opens. */
+  selectHoldMs: 1200,
+  selectGraceMs: 900,
+  /** Card centres (view x) and half width. */
+  selectCardsX: [0.2, 0.5, 0.8] as readonly number[],
+  selectCardHalfW: 0.135,
   /** Booth considered empty after no hand for this long (ms). */
   absentReturnMs: 10_000,
   /** Hold-to-select buttons: pointer = index fingertip. */

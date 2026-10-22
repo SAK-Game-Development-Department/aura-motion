@@ -17,13 +17,13 @@ export const MOTION_IDS: MotionKind[] = [
   "flick",
 ];
 export const MOTION_LABEL: Record<MotionKind, string> = {
-  swipeL: "はらう←",
-  swipeR: "はらう→",
-  swipeU: "はらう↑",
-  swipeD: "はらう↓",
-  push: "おす",
-  pull: "ひく",
-  flick: "はじく",
+  swipeL: "払う←",
+  swipeR: "払う→",
+  swipeU: "払う↑",
+  swipeD: "払う↓",
+  push: "押す",
+  pull: "引く",
+  flick: "弾く",
 };
 
 interface Sample {

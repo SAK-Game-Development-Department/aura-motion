@@ -2,7 +2,7 @@ import './audience.css';
 import { CHANNEL, type AudienceState } from '../exhibit/broadcast';
 import { HAND_BONES } from '../core/types';
 
-const SECTION: Record<string, string> = { intro: 'はじまり', rush: 'むれ', guard: 'まもり', boss: 'ボス' };
+const SECTION: Record<string, string> = { intro: '開幕', rush: '群れ', guard: '守り', boss: '主', hidden: '隠し主' };
 const $ = (id: string) => document.getElementById(id)!;
 const cv = $('mini') as HTMLCanvasElement;
 const ctx = cv.getContext('2d')!;
@@ -18,11 +18,11 @@ ch.onmessage = (e: MessageEvent<AudienceState>) => {
 
 function render(): void {
   const s = state;
-  $('status').textContent = !s || performance.now() - lastMsg > 3000 ? 'ゲーム画面と つながっていません（同じブラウザで開いてください）' : '';
+  $('status').textContent = !s || performance.now() - lastMsg > 3000 ? 'ゲーム画面と接続されていません（同じブラウザで開いてください）' : '';
   if (!s) return;
   $('score').textContent = s.phase === 'play' || s.phase === 'results' ? s.score.toLocaleString('ja-JP') : '';
   $('combo').textContent = s.phase === 'play' && s.combo >= 3 ? `${s.combo} コンボ` : '';
-  $('section').textContent = s.section ? SECTION[s.section] ?? s.section : s.phase === 'title' ? (s.present ? 'まもなく スタート' : 'つぎの ひと まってるよ') : s.phase === 'results' ? 'けっか' : '';
+  $('section').textContent = s.section ? SECTION[s.section] ?? s.section : s.phase === 'title' ? (s.present ? 'まもなく開始' : '次の方をお待ちしています') : s.phase === 'results' ? '結果' : '';
   ($('bar') as HTMLElement).style.width = `${Math.round((s.phase === 'play' ? s.progress : 0) * 100)}%`;
   $('rank').innerHTML = s.ranking
     .slice(0, 8)

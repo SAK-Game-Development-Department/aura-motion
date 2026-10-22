@@ -7,7 +7,7 @@
 //
 // Handles camera errors (→ mouse emergency mode), tracking stalls (→ restart),
 // exceptions (→ soft reset), empty booth (→ title) and a stalled loop (→ reload).
-import { EXHIBIT, GESTURE, JUDGE, LATENCY, RENDER, TRACKING } from './config';
+import { EXHIBIT, GESTURE, HAND, JUDGE, LATENCY, RENDER, TRACKING } from './config';
 import type { Runtime } from './config/runtime';
 import { Ring } from './core/math';
 import type { FieldFrame, PoseFrame } from './core/types';
@@ -36,6 +36,8 @@ import { TechLens } from './ui/techLens';
 import { battleBot } from './battle/bot';
 import { BattleSession, type BattleEvent } from './battle/session';
 import { generateValidBattle, type BattleStage } from './battle/stage';
+import { HIDDEN_BOSS, STAGES, STAGE_IDS, type StageId } from './battle/stages';
+import { StageSelector } from './exhibit/stageSelect';
 import { BattleView, type UiRequest } from './render/battleView';
 import { hash32 } from './core/rng';
 import { nickname } from './exhibit/nickname';
@@ -43,7 +45,7 @@ import { rankOf, multiplier } from './game/score';
 import { sealHands, type ShapeId } from './gesture/handModel';
 import type { Vec2 } from './core/types';
 
-type Phase = 'loading' | 'title' | 'calibrate' | 'practice' | 'play' | 'results' | 'error';
+type Phase = 'loading' | 'title' | 'select' | 'calibrate' | 'practice' | 'play' | 'results' | 'error';
 type CalibStep = 'open' | 'fist' | 'beat';
 
 export class App {
@@ -98,6 +100,12 @@ export class App {
   private battleView!: BattleView;
   private battle: BattleSession | null = null;
   private bstage: BattleStage | null = null;
+  /** Chosen stage (difficulty). */
+  private stageId: StageId = 'normal';
+  private selector: StageSelector | null = null;
+  private demoCount = 0;
+  /** Autoplay: stage the bot picks next (normal → hard → easy …). */
+  private botVisits = 0;
   private playStart = 0;
   private sectionIdx = -1;
   private requireNewVisitor = false;
@@ -131,7 +139,7 @@ export class App {
   async start(): Promise<void> {
     this.hud = new Hud(document.body);
     this.hud.show('loading');
-    this.hud.setLoading(0.02, 'がめんを じゅんびちゅう…');
+    this.hud.setLoading(0.02, '画面を準備中…');
     this.debug = new DebugOverlay(document.body);
     this.lens = new TechLens(document.body);
     if (this.rt.debug) this.debug.toggle(true);
@@ -171,10 +179,10 @@ export class App {
             const order = ['wasm', 'hand', 'segmenter', 'init'];
             const i = Math.max(0, order.indexOf(stage));
             const frac = (i + (total ? loaded / total : 0)) / order.length;
-            this.hud.setLoading(0.05 + frac * 0.95, stage === 'init' ? 'てを みつける じゅんび…' : `よみこみちゅう ${total ? Math.round((loaded / total) * 100) : 0}%`);
+            this.hud.setLoading(0.05 + frac * 0.95, stage === 'init' ? '手の認識を準備中…' : `読み込み中 ${total ? Math.round((loaded / total) * 100) : 0}%`);
           },
         });
-        this.hud.setLoading(0.04, 'カメラを じゅんびちゅう…');
+        this.hud.setLoading(0.04, 'カメラを準備中…');
       } else if (kind === 'mouse') {
         src = new MouseSource((x, y) => this.gfx.layout.screenToView(x, y));
         document.body.classList.add('cursor');
@@ -224,8 +232,8 @@ export class App {
       tracking: '手の認識の初期化に失敗しました。',
     };
     this.hud.setError(
-      'カメラが つかえません',
-      [msg[code] ?? 'カメラを開始できませんでした。', '5秒後に <code>マウス</code> であそべる緊急モードに切り替えます。'],
+      'カメラが使えません',
+      [msg[code] ?? 'カメラを開始できませんでした。', '5秒後に <code>マウス</code> で遊べる緊急モードに切り替えます。'],
       `staff: ${String((e as Error)?.message ?? e)} — 復旧: カメラを接続しなおして R キー（再試行）。docs/operations.md 参照`,
     );
     if (kind === 'camera') setTimeout(() => this.phase === 'error' && void this.startSource('mouse'), 5000);
@@ -274,6 +282,7 @@ export class App {
   private onKey(e: KeyboardEvent): void {
     const k = e.key.toLowerCase();
     if (this.source?.kind === 'mouse' && /^[0-9]$|^arrow|^[+=\-gz ]$/.test(k)) return; // mouse-mode controls
+    if (this.phase === 'select' && /^[123]$/.test(k)) this.selector?.choose(Number(k) - 1);
     if (k === 'd') this.debug.toggle();
     else if (k === 't' && !e.repeat) this.lensMode = this.lensMode === 'auto' ? (this.lens.visible ? 'off' : 'on') : this.lensMode === 'on' ? 'off' : 'auto';
     else if (k === 'f') {
@@ -298,7 +307,7 @@ export class App {
 
   private setPhase(p: Phase): void {
     this.phase = p;
-    if (this.world) this.world.theme = p === 'results' ? 'stars' : 'lake';
+    if (this.world && p !== 'select') this.world.theme = p === 'results' ? 'stars' : p === 'play' || p === 'calibrate' ? STAGES[this.stageId].themes.intro : 'lake';
     this.phaseAt = this.clock();
     this.hud.show(p === 'practice' ? 'play' : p);
     if (p !== 'play') this.hud.setMarks([]);
@@ -308,6 +317,24 @@ export class App {
       this.maybeActivateUpdate();
     }
     this.botScript();
+  }
+
+  /** Stage selection (skipped in practice mode or when the staff fixed the stage). */
+  private startSelect(now: number): void {
+    if (this.rt.practice || this.rt.stage) {
+      if (this.rt.stage) this.stageId = this.rt.stage;
+      this.startCalibration(now);
+      return;
+    }
+    this.selector = new StageSelector(now, this.rt.selectHoldMs);
+    const hue = { easy: 'magenta', normal: 'cyan', hard: 'vermilion' } as const;
+    this.hud.setSelect(
+      STAGE_IDS.map((id) => {
+        const d = STAGES[id];
+        return { level: d.level, levelEn: d.levelEn, stars: d.stars, name: d.name, reading: d.reading, desc: d.desc, boss: d.boss.name, best: this.scores.today(Date.now(), id).reduce((m, e) => Math.max(m, e.score), 0), hue: hue[id] };
+      }),
+    );
+    this.setPhase('select');
   }
 
   private startCalibration(now: number): void {
@@ -325,7 +352,7 @@ export class App {
     this.calibStep = step;
     this.calibStepAt = now;
     if (step === 'beat') this.latCal = new LatencyCalibrator(now, this.rt.calibPulses, this.rt.calibIntervalMs);
-    const text = step === 'open' ? 'てを おおきく ひらいて' : step === 'fist' ? 'ぎゅっと にぎって' : 'ひかりが あわさったら にぎって';
+    const text = step === 'open' ? '手を大きく開いて' : step === 'fist' ? '強く握って' : '光が重なった瞬間に握る';
     this.hud.setCalib(step === 'beat' ? this.rt.calibPulses : 0, 0, text);
     this.botScript();
   }
@@ -362,6 +389,7 @@ export class App {
       structure: f.structure,
       twoHandOk,
       durationMs: this.rt.playMs,
+      stage: this.stageId,
     });
     this.battle = new BattleSession({ stage: this.bstage, dda: f.dda, oneHand: this.rt.oneHand, twoHandOk, windowScale: () => (this.unstable ? JUDGE.unstableWindowScale : 1) });
     this.playStart = now;
@@ -378,8 +406,9 @@ export class App {
     if (!b) return;
     const sc = b.score;
     const nick = nickname(hash32(b.stage.seed ^ sc.score));
-    const entry = { score: sc.score, name: nick, rank: rankOf(sc), at: Date.now(), seated: false };
-    const todayBest = this.scores.today().reduce((m, e) => Math.max(m, e.score), 0);
+    const def = STAGES[b.stage.stageId];
+    const entry = { score: sc.score, name: nick, rank: rankOf(sc), at: Date.now(), seated: false, stage: def.id };
+    const todayBest = this.scores.today(Date.now(), def.id).reduce((m, e) => Math.max(m, e.score), 0);
     this.resultsPlaced = this.scores.add(entry);
     this.hud.setResults({
       score: sc.score,
@@ -388,10 +417,11 @@ export class App {
       counts: sc.counts,
       nick,
       placed: this.resultsPlaced,
-      ranking: this.scores.list(),
+      ranking: this.scores.list(def.id),
+      stage: `${def.level}「${def.name}」`,
       flow: 0,
       isBest: sc.score > todayBest && sc.score > 0,
-      extra: `<span>はらった かげ <b>${b.kills}</b></span>${b.ultimates - (b.hiddenCleared ? 1 : 0) > 0 ? '<span><b>天輪結界</b> 成功</span>' : ''}${b.hiddenCleared ? '<span><b>暁ノ影</b> 撃破！</span>' : ''}`,
+      extra: `<span>撃破 <b>${b.kills}</b></span>${b.ultimates - (b.hiddenCleared ? 1 : 0) > 0 ? `<span>奥義<b>天輪結界</b>成功</span>` : `<span>${def.boss.name}を逃した</span>`}${b.hiddenCleared ? `<span>隠し主<b>${HIDDEN_BOSS.name}</b>撃破！</span>` : ''}`,
     });
     this.hud.setMarks([]);
     this.setPhase('results');
@@ -484,7 +514,27 @@ export class App {
           this.world.transform();
         }
         this.hud.setTitle({ attract, placement: attract ? 'none' : this.placement, progress: this.requireNewVisitor ? 0 : this.presence.startProgress(now), waitingNext: this.requireNewVisitor && present });
-        if (!attract && !this.requireNewVisitor && this.presence.ready(now)) this.startCalibration(now);
+        if (!attract && !this.requireNewVisitor && this.presence.ready(now)) this.startSelect(now);
+        break;
+      }
+      case 'select': {
+        const sel = this.selector!;
+        const hand = g?.hands[0] ?? null;
+        const st = sel.update(now, hand ? hand.palm.x : null);
+        const L = this.gfx.layout;
+        const rects = STAGE_IDS.map((_, i) => {
+          const cx = HAND.selectCardsX[i]!;
+          return { l: L.viewToScreen({ x: cx - HAND.selectCardHalfW, y: 0.5 }).x, r: L.viewToScreen({ x: cx + HAND.selectCardHalfW, y: 0.5 }).x };
+        });
+        this.hud.updateSelect(rects, st.hover, st.progress, hand ? L.viewToScreen(hand.palm) : null);
+        if (st.hover !== null) this.world.theme = STAGES[STAGE_IDS[st.hover]!].themes.intro;
+        if (st.chosen !== null) {
+          this.stageId = STAGE_IDS[st.chosen]!;
+          this.hud.cutin(STAGES[this.stageId].name, `${STAGES[this.stageId].level}　${STAGES[this.stageId].reading}`, 'amber', false);
+          this.startCalibration(now);
+        }
+        this.presence.update(now, present, present ? 'ok' : 'none');
+        if (this.presence.absentFor(now) > 3000) this.setPhase('title');
         break;
       }
       case 'calibrate': {
@@ -529,7 +579,7 @@ export class App {
         for (const e of events) {
           if (e.type !== 'cast') continue;
           this.castCount++;
-          const how = e.release === 'hold' ? '' : e.release === 'sigil' ? `＋${SIGIL_LABEL[e.sigil!]}` : e.release === 'twoHand' ? '＋りょうて' : `＋${MOTION_LABEL[e.release]}`;
+          const how = e.release === 'hold' ? '' : e.release === 'sigil' ? `＋${SIGIL_LABEL[e.sigil!]}` : e.release === 'twoHand' ? '＋両手' : `＋${MOTION_LABEL[e.release]}`;
           this.lastCast = { label: `${SHAPE_LABEL[e.shape]}${how}`, at: now };
           this.hud.announce(this.lastCast.label);
         }
@@ -607,7 +657,7 @@ export class App {
     this.lastUi = ui;
     if (ui.cutin) this.hud.cutin(ui.cutin.title, ui.cutin.reading, ui.cutin.hue, ui.cutin.big);
     if (ui.hurt) this.hud.hurt();
-    if (ui.combo) this.hud.announce(`${ui.combo} れんげき！`);
+    if (ui.combo) this.hud.announce(`${ui.combo} 連撃！`);
     const L = this.gfx.layout;
     for (const e of bev) {
       if (e.type === 'hit') {
@@ -625,12 +675,12 @@ export class App {
           this.hud.judge('miss', sp.x, sp.y - L.h * 0.06);
         }
       } else if (e.type === 'section') {
-        const theme: Record<string, WorldTheme> = { intro: 'lake', rush: 'stars', guard: 'crystal', boss: 'eclipse', hidden: 'storm' };
-        this.world.theme = theme[e.kind] ?? 'lake';
+        const def = STAGES[b.stage.stageId];
+        this.world.theme = def.themes[e.kind] as WorldTheme;
         this.sectionIdx++;
         this.hud.setSection(this.sectionIdx, e.kind, false);
-        const name: Record<string, string> = { intro: 'かげが あらわれた', rush: 'むれが くる！', guard: 'ひらいて おして ふせげ', boss: '夜ノ主（よるのぬし）', hidden: '' };
-        if (name[e.kind]) this.hud.announce(name[e.kind]!);
+        const call = e.kind === 'boss' ? `${def.boss.name}（${def.boss.reading}）` : e.kind === 'hidden' ? '' : def.calls[e.kind];
+        if (call) this.hud.announce(call);
       }
     }
   }
@@ -678,8 +728,8 @@ export class App {
 
   private warningText(): string | null {
     if (this.phase !== 'practice' && this.phase !== 'calibrate') return null;
-    if ((this.gframe?.frame.ignored ?? 0) > 0) return 'ひとりずつ あそんでね';
-    if (this.unstable) return 'くらいので つかう かたちを へらしています';
+    if ((this.gframe?.frame.ignored ?? 0) > 0) return 'お一人ずつ遊んでください';
+    if (this.unstable) return '暗いため、使う形を減らしています';
     return null;
   }
 
@@ -689,7 +739,9 @@ export class App {
     if (this.demo && this.demoBattle && now - this.demoBattle.start > this.demoBattle.session.stage.durationMs + 1500) this.stopDemo();
     if (!this.demo) {
       // Attract: the bot fights a short battle on its own (ghost hands).
-      const stage = generateValidBattle({ seed: 0xa77ac7 + (Math.floor(now / 1000) % 5), flags: this.rt.flags, oneHand: false, coreOnly: false, structure: true, twoHandOk: true, durationMs: 36_000 });
+      const demoStage = STAGE_IDS[this.demoCount++ % STAGE_IDS.length]!;
+      const stage = generateValidBattle({ seed: 0xa77ac7 + (Math.floor(now / 1000) % 5), flags: this.rt.flags, oneHand: false, coreOnly: false, structure: true, twoHandOk: true, durationMs: 36_000, stage: demoStage });
+      this.world.theme = STAGES[demoStage].themes.intro;
       const start = now + 800;
       const session = new BattleSession({ stage: { ...stage, enemies: stage.enemies.filter((e) => !e.tutorial) }, dda: false, oneHand: false, twoHandOk: true });
       this.demoBattle = { session, start };
@@ -705,6 +757,7 @@ export class App {
           for (const e of gf.events) db.session.pushEvent(e.t - db.start, e);
           const gt = f.t - db.start;
           const bev = db.session.update(gt);
+          for (const e of bev) if (e.type === 'section') this.world.theme = STAGES[db.session.stage.stageId].themes[e.kind] as WorldTheme;
           this.battleView.onEvents(bev, f.t, gt, db.session, gf);
         } else this.world.onGestureEvents(gf.events, gf, now);
         if (this.world.particles) {
@@ -740,6 +793,11 @@ export class App {
       const arrive = now + 800;
       const idle = perform([], 'R');
       script = (t) => (t < arrive ? [] : idle(t));
+    } else if (this.phase === 'select') {
+      // Walk the hand over a card and hold it there.
+      const pick = [1, 2, 0][this.botVisits++ % 3]!;
+      const at = now + 300;
+      script = perform([{ at, shape: 'open', holdMs: 60_000, formMs: 400, at2: { x: HAND.selectCardsX[pick]!, y: 0.66 } }], 'R');
     } else if (this.phase === 'calibrate' && this.calibStep === 'open') {
       script = perform([{ at: now + 200, shape: 'open', holdMs: 1400 }], 'R');
       const s = script;
@@ -926,6 +984,7 @@ export class App {
   /** Test hook (E2E/soak). */
   inspect(): Record<string, unknown> {
     return {
+      stage: this.stageId,
       t: this.clock(),
       gameT: this.phase === 'play' ? this.clock() - this.playStart : null,
       phase: this.phase,

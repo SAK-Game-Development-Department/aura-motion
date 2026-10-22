@@ -14,6 +14,6 @@ if (!d) {
     <div class="meta">MAX COMBO <b>${d.combo}</b></div>
     <div class="name">${esc(d.name)}</div>
     <div class="date">${esc(d.date)}</div>
-    <p class="save">スクリーンショットで ほぞんできます</p>`;
+    <p class="save">スクリーンショットで保存できます</p>`;
   document.title = `AURA ${d.score}`;
 }

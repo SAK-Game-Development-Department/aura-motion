@@ -2,10 +2,10 @@
 // what the player does (requirement) and how it looks (effect kind + colour).
 import type { Flags } from '../config/flags';
 import type { GestureEvent } from '../gesture/engine';
-import { CORE_SHAPES, type ShapeId } from '../gesture/handModel';
+import { CORE_SHAPES, SHAPE_LABEL, type ShapeId } from '../gesture/handModel';
 import type { MotionKind } from '../gesture/motion';
 import type { SealKind } from '../gesture/seals';
-import type { SigilKind } from '../gesture/sigil';
+import { SIGIL_LABEL, type SigilKind } from '../gesture/sigil';
 
 export type Req =
   | { kind: 'shape'; shape: ShapeId }
@@ -53,7 +53,7 @@ export const TECHNIQUES: Technique[] = [
   { id: 'uzujin', name: '渦陣', reading: 'うずじん', req: { kind: 'sigil', sigil: 'spiral' }, effect: 'sigil', hue: 'amber', tier: 1, busyMs: 2500 },
   { id: 'kaibyaku', name: '開闢', reading: 'かいびゃく', req: { kind: 'spread' }, effect: 'nova', hue: 'amber', tier: 1, busyMs: 1700, alt: { kind: 'motion', shape: 'open', motion: 'push' } },
   // Seals (印): two hands. Each has a one-hand alternative.
-  { id: 'in-gassho', name: '合', reading: 'がっしょう', req: { kind: 'seal', seal: 'gassho' }, effect: 'seal', hue: 'amber', tier: 1, busyMs: 1100, alt: { kind: 'shape', shape: 'thumb' } },
+  { id: 'in-gassho', name: '合掌', reading: 'がっしょう', req: { kind: 'seal', seal: 'gassho' }, effect: 'seal', hue: 'amber', tier: 1, busyMs: 1100, alt: { kind: 'shape', shape: 'thumb' } },
   { id: 'in-kensho', name: '拳掌', reading: 'けんしょう', req: { kind: 'seal', seal: 'kensho' }, effect: 'seal', hue: 'amber', tier: 1, busyMs: 1100, alt: { kind: 'motion', shape: 'fist', motion: 'push' } },
   { id: 'in-soshi', name: '双指', reading: 'そうし', req: { kind: 'seal', seal: 'soshi' }, effect: 'seal', hue: 'magenta', tier: 1, busyMs: 1100, alt: { kind: 'motion', shape: 'fist', motion: 'flick' } },
   { id: 'in-kanmon', name: '環門', reading: 'かんもん', req: { kind: 'seal', seal: 'kanmon' }, effect: 'seal', hue: 'cyan', tier: 1, busyMs: 1100, alt: { kind: 'shape', shape: 'ell' } },
@@ -111,21 +111,21 @@ export function matches(req: Req, e: GestureEvent): boolean {
   }
 }
 
+const SEAL_NAME: Record<SealKind, string> = { gassho: '合掌', kensho: '拳掌', soshi: '双指', kanmon: '環門', kosa: '交差' };
+const MOTION_VERB = { swipe: '払う', push: '押す', pull: '引く', flick: '弾く' } as const;
+
 /** Short hint label for a requirement (shown under the weak-point mark). */
 export function reqLabel(r: Req): string {
-  const shape: Record<ShapeId, string> = { fist: 'にぎる', open: 'ひらく', point: 'さす', two: 'ふたえ', pinch: 'つまむ', horn: 'つの', thumb: 'たてる', ell: 'かぎ' };
-  const motion = { swipe: 'はらう', push: 'おす', pull: 'ひく', flick: 'はじく' } as const;
-  const sigil: Record<SigilKind, string> = { circle: 'まる', triangle: 'さんかく', zigzag: 'いなずま', spiral: 'うず' };
   switch (r.kind) {
     case 'shape':
-      return shape[r.shape];
+      return SHAPE_LABEL[r.shape];
     case 'motion':
-      return `${shape[r.shape]}→${motion[r.motion]}`;
+      return `${SHAPE_LABEL[r.shape]} → ${MOTION_VERB[r.motion]}`;
     case 'sigil':
-      return `ゆびで ${sigil[r.sigil]}`;
+      return `空中に「${SIGIL_LABEL[r.sigil]}」`;
     case 'seal':
-      return `いん「${{ gassho: 'がっしょう', kensho: 'けんしょう', soshi: 'そうし', kanmon: 'かんもん', kosa: 'こうさ' }[r.seal]}」`;
+      return `印「${SEAL_NAME[r.seal]}」`;
     case 'spread':
-      return 'りょうてを あわせて ひらく';
+      return '両手を合わせ → 開く';
   }
 }

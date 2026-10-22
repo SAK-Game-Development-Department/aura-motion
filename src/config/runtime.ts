@@ -2,6 +2,7 @@
 // compresses durations for E2E/soak tests without touching game logic.
 import { EXHIBIT, HAND, LATENCY } from './index';
 import { DEFAULT_FLAGS, parseFlags, type Flags } from './flags';
+import type { DifficultyId } from './game';
 
 export type SourceChoice = 'camera' | 'synth' | 'autoplay' | 'mouse' | 'replay' | 'empty';
 
@@ -14,6 +15,8 @@ export interface Runtime {
   calm: boolean;
   /** One-hand mode: every technique has a one-hand alternative; two-hand moves are never required. */
   oneHand: boolean;
+  /** Fixed stage (staff): skips the stage selection. */
+  stage: DifficultyId | null;
   /** Free practice (live recognition) instead of the battle. */
   practice: boolean;
   forceWebGL: boolean;
@@ -31,6 +34,8 @@ export interface Runtime {
   resultsMs: number;
   attractDelayMs: number;
   startHoldMs: number;
+  /** Holding the hand over a stage card this long selects it. */
+  selectHoldMs: number;
   calibPulses: number;
   calibIntervalMs: number;
 }
@@ -49,6 +54,7 @@ export function readRuntime(search: string): Runtime {
     debug: q.get('debug') === '1',
     calm: q.get('calm') === '1',
     oneHand: q.get('onehand') === '1',
+    stage: (['easy', 'normal', 'hard'] as const).find((s) => s === q.get('stage')) ?? null,
     practice: q.get('practice') === '1',
     forceWebGL: q.get('webgl') === '1',
     quality: quality !== null ? Math.max(0, Math.min(5, Number(quality))) : null,
@@ -62,6 +68,7 @@ export function readRuntime(search: string): Runtime {
     resultsMs: fast ? 4000 : EXHIBIT.resultsMs,
     attractDelayMs: fast ? 1500 : 3000,
     startHoldMs: fast ? 800 : HAND.startHoldMs,
+    selectHoldMs: fast ? 700 : HAND.selectHoldMs,
     calibPulses: fast ? 3 : LATENCY.calibPulses,
     calibIntervalMs: LATENCY.calibIntervalMs,
   };

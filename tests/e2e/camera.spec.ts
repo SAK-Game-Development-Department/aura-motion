@@ -28,7 +28,7 @@ test('camera denied → error screen → mouse emergency mode', async ({ browser
   await expect(page.locator('.err h2')).toContainText('カメラ');
   await page.screenshot({ path: 'test-results/camera-error.png' });
   const s = await waitFor(page, (x) => x.source === 'mouse' && x.phase !== 'error' && x.present, 20_000);
-  expect(['title', 'calibrate']).toContain(s.phase);
+  expect(['title', 'select', 'calibrate']).toContain(s.phase);
   // Number keys make shapes in the emergency mode.
   await page.keyboard.press('1');
   await waitFor(page, (x) => x.shape === 'fist', 10_000);

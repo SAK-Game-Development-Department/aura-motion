@@ -7,6 +7,7 @@ export const PALETTE = {
   cyan: '#3ff2ff', // player / left hand / "good"
   magenta: '#ff3fb4', // right hand / danger
   amber: '#ffb43f', // perfect / goal / reward
+  vermilion: '#ff5a2a', // 上級「紅蓮ノ原」 only: flame spirits and the ember field
   white: '#f4f7ff',
 } as const;
 

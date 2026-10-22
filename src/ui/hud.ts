@@ -11,12 +11,23 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): 
   return e;
 };
 
-export type Screen = 'loading' | 'title' | 'calibrate' | 'play' | 'results' | 'error';
+export type Screen = 'loading' | 'title' | 'select' | 'calibrate' | 'play' | 'results' | 'error';
+
+export interface SelectCard {
+  level: string;
+  levelEn: string;
+  stars: number;
+  name: string;
+  reading: string;
+  desc: string;
+  boss: string;
+  best: number;
+  hue: 'cyan' | 'magenta' | 'amber' | 'vermilion';
+}
 
 const SECTION_ICON: Record<string, string> = { intro: '●', flow: '≈', wall: '⌂', dodge: '⇅', finale: '✦', tap: '●', trace: '〰', shape: '✋', pinch: '◉' };
 const SECTION_NAME: Record<string, string> = {
-  intro: 'ふれる', flow: 'ながれ', wall: 'かたち', dodge: 'よける', finale: 'フィナーレ',
-  tap: 'タッチ', trace: 'なぞる', shape: 'てのかたち', pinch: 'つまむ',
+  intro: '開幕', rush: '群れ', guard: '守り', boss: '主', hidden: '隠し',
 };
 
 // Open-hand outline (palm toward the camera) for the placement guide.
@@ -57,6 +68,9 @@ export class Hud {
   private lastScore = -1;
   private lastCombo = -1;
   private sectionKinds: string[] = [];
+  private cards: HTMLElement[] = [];
+  private selCursor: HTMLElement;
+  private selHover = -2;
 
   constructor(parent: HTMLElement) {
     this.root = h('div');
@@ -67,7 +81,7 @@ export class Hud {
       this.root.appendChild(l);
       return l;
     };
-    this.layers = { loading: mk('loading'), title: mk('title'), calibrate: mk('calibrate'), play: mk('play'), results: mk('results'), error: mk('error') };
+    this.layers = { loading: mk('loading'), title: mk('title'), select: mk('select'), calibrate: mk('calibrate'), play: mk('play'), results: mk('results'), error: mk('error') };
 
     // Shared privacy notice (title + loading + error).
     const privacy = '<b>映像は端末の外に出ず、保存されません。</b>&nbsp;カメラは手の形と動きの推定だけに使います（顔の認識・識別はしません）。';
@@ -77,7 +91,7 @@ export class Hud {
     const lg = h('div', 'logo', 'AURA');
     this.layers.loading.appendChild(lg);
     const load = h('div', 'load');
-    this.loadLabel = h('div', 'label', 'じゅんびちゅう…');
+    this.loadLabel = h('div', 'label', '準備中…');
     const bar = h('div', 'bar');
     this.loadBar = h('i');
     bar.appendChild(this.loadBar);
@@ -88,7 +102,7 @@ export class Hud {
     this.layers.title.appendChild(h('div', 'logo', 'AURA'));
     this.guide = h('div', 'guide', GUIDE_SVG);
     this.layers.title.appendChild(this.guide);
-    this.callEl = h('div', 'call glow-c', 'カメラに てを かざしてね');
+    this.callEl = h('div', 'call glow-c', 'カメラに手をかざして開始');
     this.hintEl = h('div', 'hint glow-a', '');
     this.layers.title.append(this.callEl, this.hintEl);
     const svg = this.guide.querySelector('svg');
@@ -105,8 +119,14 @@ export class Hud {
       this.guideFill = fill;
     }
 
+    // Stage selection (cards are filled by setSelect)
+    this.layers.select.appendChild(h('div', 'sel-head glow-c', '難易度を選ぶ'));
+    this.layers.select.appendChild(h('div', 'sel-sub', '選びたいカードの前に手をかざして、そのまま止める'));
+    this.selCursor = h('div', 'sel-cursor');
+    this.layers.select.appendChild(this.selCursor);
+
     // Calibration
-    this.calibText = h('div', 'calib-text glow-a', 'てを ひらいて');
+    this.calibText = h('div', 'calib-text glow-a', '手を開いて');
     this.calibDots = h('div', 'calib-dots');
     this.layers.calibrate.append(this.calibText, this.calibDots);
 
@@ -167,7 +187,7 @@ export class Hud {
     const { attract, placement, progress } = opts;
     if (opts.waitingNext) {
       this.guide.style.opacity = '0';
-      this.callEl.textContent = 'ありがとう！ つぎの ひと どうぞ';
+      this.callEl.textContent = 'ありがとうございました！ 次の方どうぞ';
       this.hintEl.textContent = '';
       return;
     }
@@ -175,9 +195,46 @@ export class Hud {
     this.guide.classList.toggle('tooClose', placement === 'tooClose');
     this.guide.classList.toggle('tooFar', placement === 'tooFar');
     if (this.guideFill) this.guideFill.style.strokeDashoffset = String(1 - progress);
-    this.callEl.textContent = attract || placement === 'none' ? 'カメラに てを かざしてね' : placement === 'ok' ? (progress > 0 ? 'そのまま…' : 'そのまま まってね') : '';
-    this.hintEl.textContent = placement === 'tooClose' ? 'すこし てを はなしてね' : placement === 'tooFar' ? 'もうすこし ちかくに' : '';
+    this.callEl.textContent = attract || placement === 'none' ? 'カメラに手をかざして開始' : placement === 'ok' ? (progress > 0 ? 'そのまま…' : 'そのまま静止') : '';
+    this.hintEl.textContent = placement === 'tooClose' ? '少し手を離して' : placement === 'tooFar' ? 'もう少し近づけて' : '';
     this.hintEl.className = `hint ${placement === 'tooClose' ? 'glow-m' : 'glow-a'}`;
+  }
+
+  // ── stage selection ──
+  setSelect(cards: SelectCard[]): void {
+    for (const c of this.cards) c.remove();
+    this.cards = cards.map((c) => {
+      const el = h(
+        'div',
+        `sel-card hue-${c.hue}`,
+        `<div class="prog"></div><div class="lv">${c.level}<small>${c.levelEn}</small></div><div class="stars">${'★'.repeat(c.stars)}${'☆'.repeat(3 - c.stars)}</div>` +
+          `<div class="nm">${c.name}</div><div class="rd">${c.reading}</div><div class="ds">${c.desc}</div>` +
+          `<div class="boss">主　${c.boss}</div><div class="best">本日の最高 <b>${c.best > 0 ? c.best.toLocaleString('ja-JP') : '―'}</b></div>`,
+      );
+      this.layers.select.appendChild(el);
+      return el;
+    });
+    this.selHover = -2;
+  }
+
+  /** Card rects in CSS px (left, right), hover index, progress and the hand position. */
+  updateSelect(rects: Array<{ l: number; r: number }>, hover: number | null, progress: number, hand: { x: number; y: number } | null): void {
+    for (let i = 0; i < this.cards.length; i++) {
+      const el = this.cards[i]!;
+      const r = rects[i];
+      if (r) {
+        el.style.left = `${r.l.toFixed(0)}px`;
+        el.style.width = `${(r.r - r.l).toFixed(0)}px`;
+      }
+      el.style.setProperty('--p', (hover === i ? progress : 0).toFixed(3));
+    }
+    const hv = hover ?? -1;
+    if (hv !== this.selHover) {
+      this.selHover = hv;
+      this.cards.forEach((c, i) => c.classList.toggle('hover', i === hv));
+    }
+    this.selCursor.style.opacity = hand ? '1' : '0';
+    if (hand) this.selCursor.style.transform = `translate(${hand.x.toFixed(0)}px, ${hand.y.toFixed(0)}px)`;
   }
 
   // ── hold buttons ──
@@ -333,17 +390,18 @@ export class Hud {
   }
 
   // ── results ──
-  setResults(r: { score: number; rank: string; maxCombo: number; counts: Record<Grade, number>; nick: string; placed: number; ranking: ScoreEntry[]; flow: number; isBest: boolean; qrSvg?: string | null; extra?: string }): void {
+  setResults(r: { score: number; rank: string; maxCombo: number; counts: Record<Grade, number>; nick: string; placed: number; ranking: ScoreEntry[]; flow: number; isBest: boolean; qrSvg?: string | null; extra?: string; stage?: string }): void {
     const rankClass = r.rank === 'S' ? 'glow-a' : r.rank === 'A' ? 'glow-c' : 'glow-m';
     this.resEl.innerHTML = `
+      ${r.stage ? `<div class="stage-name">${r.stage}</div>` : ''}
       <div class="rank ${rankClass}">${r.rank}</div>
       <div class="big glow-c">${r.score.toLocaleString('ja-JP')}</div>
       <div class="row"><span>PERFECT <b>${r.counts.perfect}</b></span><span>GOOD <b>${r.counts.good}</b></span><span>MISS <b>${r.counts.miss}</b></span><span>MAX <b>${r.maxCombo}</b></span></div>
       ${r.extra ? `<div class="row">${r.extra}</div>` : ''}
       <div class="nick">${r.nick}</div>
-      ${r.isBest ? '<div class="newbest">きょうの ベスト！</div>' : ''}`;
-    this.qrEl.innerHTML = r.qrSvg ? `${r.qrSvg}<div>スマホで よみとると<br>カードを もちかえれる</div>` : '';
-    this.rankingEl.innerHTML = `<h3>RANKING</h3><ol>${r.ranking
+      ${r.isBest ? '<div class="newbest">本日のベスト！</div>' : ''}`;
+    this.qrEl.innerHTML = r.qrSvg ? `${r.qrSvg}<div>スマホで読み取ると<br>記録カードを持ち帰れます</div>` : '';
+    this.rankingEl.innerHTML = `<h3>RANKING${r.stage ? ` <small>${r.stage}</small>` : ''}</h3><ol>${r.ranking
       .slice(0, 7)
       .map((e, i) => `<li class="${i === r.placed ? 'me' : ''}"><span>${i + 1}. ${escapeHtml(e.name)}</span><span>${e.score.toLocaleString('ja-JP')}</span></li>`)
       .join('')}</ol>`;

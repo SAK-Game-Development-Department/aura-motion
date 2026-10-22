@@ -6,7 +6,8 @@ import { clamp, ease, lerp } from '../core/math';
 import { HAND_BONES, type Vec2 } from '../core/types';
 import type { BattleEvent, BattleSession, ActiveEnemy } from '../battle/session';
 import type { Enemy } from '../battle/stage';
-import { type Hue, type Req, type Technique } from '../battle/techniques';
+import { HIDDEN_BOSS, STAGES, type EnemyStyle } from '../battle/stages';
+import { reqLabel, type Hue, type Req, type Technique } from '../battle/techniques';
 import type { GestureFrame } from '../gesture/engine';
 import { buildHand, defaultHand, sealHands, withShape } from '../gesture/handModel';
 import { sigilPath } from '../gesture/sigil';
@@ -17,6 +18,14 @@ import { C, type WorldView } from './world';
 
 type RGB = readonly [number, number, number];
 const HUE: Record<Hue, RGB> = { cyan: C.cyan, magenta: C.magenta, amber: C.amber };
+
+const STYLE_INDEX: Record<EnemyStyle, number> = { shade: 0, crystal: 1, flame: 2 };
+/** Rim colour per stage look and enemy kind (the kind stays readable within a stage). */
+const RIM: Record<EnemyStyle, Record<Enemy['kind'], RGB>> = {
+  shade: { wisp: C.magenta, warden: C.cyan, striker: C.magenta, breaker: C.amber, lord: C.magenta, eclipse: C.white },
+  crystal: { wisp: C.cyan, warden: C.white, striker: C.cyan, breaker: C.amber, lord: C.cyan, eclipse: C.white },
+  flame: { wisp: C.vermilion, warden: C.magenta, striker: C.vermilion, breaker: C.amber, lord: C.vermilion, eclipse: C.white },
+};
 
 const BASE_SIZE: Record<Enemy['kind'], number> = { wisp: 0.075, warden: 0.095, striker: 0.085, breaker: 0.12, lord: 0.22, eclipse: 0.26 };
 
@@ -135,7 +144,7 @@ export class BattleView {
         this.world.shake.kick(0.5);
       } else if (e.type === 'hiddenBoss') {
         // Space cracks open; the void storm rolls in.
-        ui.cutin = { title: '暁ノ影', reading: 'かくされし あかつきのかげ', hue: 'magenta', big: true };
+        ui.cutin = { title: HIDDEN_BOSS.name, reading: `隠し主　${HIDDEN_BOSS.reading}`, hue: 'magenta', big: true };
         this.fx.push({ kind: 'crack', t0: now, dur: 3400, from: { x: 0.5, y: 0.35 }, to: { x: 0.5, y: 0.35 }, rgb: C.magenta, seed: e.t, big: 1 });
         this.dimUntil = now + 2600;
         this.world.holdTime(now, 500);
@@ -190,27 +199,50 @@ export class BattleView {
     this.enemies.uTime.value = now / 1000;
 
     this.enemies.begin();
+    const look: EnemyStyle = STAGES[s.stage.stageId ?? 'normal'].style;
     for (const a of s.enemies) {
       const p = this.enemyPos(a, gt);
+      const style: EnemyStyle = a.e.kind === 'eclipse' ? 'shade' : look;
+      const rim = RIM[style][a.e.kind];
       if (!this.seen.has(a.e.id)) {
         // Entrance: a rift tears open where the spirit emerges.
         this.seen.add(a.e.id);
         const big = a.e.kind === 'lord' || a.e.kind === 'eclipse' ? 1.4 : a.e.kind === 'breaker' ? 0.9 : 0.5;
-        this.fx.push({ kind: 'rift', t0: now, dur: 900, from: p.at, to: p.at, rgb: a.e.kind === 'breaker' ? C.amber : C.magenta, seed: a.e.id, big });
+        this.fx.push({ kind: 'rift', t0: now, dur: 900, from: p.at, to: p.at, rgb: rim, seed: a.e.id, big });
       }
       if (p.alpha <= 0.01) continue;
       const w = L.viewToWorld(p.at);
       const size = L.len(p.size) * 2.6;
       const hurt = clamp(1 - (gt - a.lastMissT) / 300, 0, 1);
-      const rim = a.e.kind === 'breaker' ? C.amber : a.e.kind === 'warden' ? C.cyan : a.e.kind === 'eclipse' ? C.white : C.magenta;
-      this.enemies.add(w.x, w.y, size, rim, p.alpha * (dom > 0.5 && a.state === 'alive' ? 1 - (dom - 0.5) * 1.6 : 1), a.e.id * 1.37, hurt, p.dissolve);
+      this.enemies.add(w.x, w.y, size, rim, p.alpha * (dom > 0.5 && a.state === 'alive' ? 1 - (dom - 0.5) * 1.6 : 1), a.e.id * 1.37, hurt, p.dissolve, STYLE_INDEX[style]);
       if (a.state !== 'alive' || p.dissolve > 0) continue;
       // Eyes.
       const eyeR = L.len(p.size) * 0.16;
       const blink = Math.sin(gt / 1700 + a.e.id * 3) > 0.97 ? 0.15 : 1;
       const ex = L.len(p.size) * 0.32;
-      const eyes = a.e.kind === 'lord' ? [-1.2, -0.4, 0.4, 1.2] : a.e.kind === 'eclipse' ? [-1.5, -0.75, 0, 0.75, 1.5] : [-1, 1];
-      for (const k of eyes) g.add(Shape.Disk, w.x + ex * k * 0.8, w.y + L.len(p.size) * 0.12 - (a.e.kind === 'eclipse' ? Math.abs(k) * ex * 0.15 : 0), eyeR, eyeR * blink, 0, a.e.kind === 'lord' ? C.amber : a.e.kind === 'eclipse' ? C.cyan : C.white, 1.3);
+      const R0 = L.len(p.size);
+      if (style === 'crystal') {
+        // One tall slit eye; bosses get three.
+        const n = a.e.kind === 'lord' ? 3 : 1;
+        for (let i = 0; i < n; i++) g.add(Shape.Disk, w.x + (i - (n - 1) / 2) * ex * 1.1, w.y + R0 * 0.1, eyeR * 0.45, eyeR * 2.2 * blink, 0, a.e.kind === 'lord' ? C.amber : C.white, 1.4);
+      } else if (style === 'flame') {
+        // Two slanted eyes and short horns.
+        const n = a.e.kind === 'lord' ? 2 : 1;
+        for (const k of [-1, 1]) {
+          for (let i = 0; i < n; i++) g.add(Shape.Disk, w.x + ex * k * (0.75 + i * 0.6), w.y + R0 * (0.08 - i * 0.12), eyeR * 1.2, eyeR * 0.45 * blink, k * 0.45, a.e.kind === 'lord' ? C.white : C.amber, 1.4);
+          const hx = w.x + ex * k * 1.1;
+          const hy = w.y + R0 * 0.75;
+          g.line(hx, hy, hx + ex * k * 0.5, hy + R0 * 0.55, 0.004 * L.k, rim, 1.2);
+        }
+      } else {
+        const eyes = a.e.kind === 'lord' ? [-1.2, -0.4, 0.4, 1.2] : a.e.kind === 'eclipse' ? [-1.5, -0.75, 0, 0.75, 1.5] : [-1, 1];
+        for (const k of eyes) g.add(Shape.Disk, w.x + ex * k * 0.8, w.y + R0 * 0.12 - (a.e.kind === 'eclipse' ? Math.abs(k) * ex * 0.15 : 0), eyeR, eyeR * blink, 0, a.e.kind === 'lord' ? C.amber : a.e.kind === 'eclipse' ? C.cyan : C.white, 1.3);
+      }
+      if (style === 'flame') {
+        // Embers rising off flame spirits.
+        const u = ((now / 900 + a.e.id * 0.37) % 1 + 1) % 1;
+        g.add(Shape.Disk, w.x + Math.sin(a.e.id * 5 + now / 300) * R0 * 0.8, w.y + R0 * (0.8 + u * 1.6), R0 * 0.07, R0 * 0.07, 0, C.amber, 1.2 * (1 - u));
+      }
       if (a.e.kind === 'eclipse') {
         // Hidden boss: an inverted halo and orbiting shards.
         const R = L.len(p.size);
@@ -223,16 +255,15 @@ export class BattleView {
           g.line(x0, y0, x0 + Math.cos(ang + 1.2) * R * 0.35, y0 + Math.sin(ang + 1.2) * R * 0.35, 0.004 * L.k, i % 2 ? C.magenta : C.cyan, 1.4);
         }
       }
-      if (a.e.kind === 'warden' && a.step === 0) {
-        const rr = L.len(p.size) * 2.9;
-        g.add(Shape.Ring, w.x, w.y, rr, rr, gt / 900, C.cyan, 0.9, 0.93, 40);
-      }
-      if (a.e.kind === 'lord') {
-        for (let i = 0; i < 3; i++) {
-          const rr = L.len(p.size) * (3.2 + i * 0.5);
-          g.add(Shape.Ring, w.x, w.y, rr, rr * 0.35, (gt / 1600) * (i % 2 ? -1 : 1) + i, C.magenta, 0.6, 0.96, 50);
+      if (a.e.kind === 'warden' && a.step < a.e.steps.length - 1) {
+        // Shield: one ring per remaining layer.
+        for (let i = 0; i < a.e.steps.length - 1 - a.step; i++) {
+          const rr = R0 * (2.9 + i * 0.45);
+          if (style === 'crystal') this.polygon(g, w.x, w.y, rr * 0.5, 6, gt / 1400 + i, rim, 0.9);
+          else g.add(Shape.Ring, w.x, w.y, rr, rr, gt / 900, rim, 0.9, 0.93, 40);
         }
       }
+      if (a.e.kind === 'lord') this.drawLord(g, style, w, R0, gt, now, rim);
       if (!showMarks) continue;
       const step = a.e.steps[a.step];
       if (!step) continue;
@@ -255,10 +286,48 @@ export class BattleView {
       if (markAt.y - msz * 2.2 < 0.06) markAt = { x: p.at.x + (p.at.x > 0.62 ? -1 : 1) * (p.size * 1.35 + msz * 1.8) / L.ca, y: Math.max(0.16, p.at.y) };
       this.drawReq(g, req, markAt, msz, now);
       const strong = a.e.tutorial || a.e.kind === 'lord' || req.kind === 'seal';
-      if (strong || a.e.kind === 'breaker') ui.marks.push({ id: `e${a.e.id}`, at: { x: markAt.x, y: markAt.y + msz * 2.05 }, text: reqText(req, step.tech), strong });
+      if (strong || a.e.kind === 'breaker') ui.marks.push({ id: `e${a.e.id}`, at: { x: markAt.x, y: markAt.y + msz * 2.05 }, text: reqLabel(req), strong });
     }
     this.enemies.end();
     this.drawFx(g, now);
+  }
+
+  /** Regular polygon outline (world coords). */
+  private polygon(g: GlyphBatch, x: number, y: number, r: number, n: number, rot: number, rgb: RGB, alpha: number, squash = 1): void {
+    const L = this.gfx.layout;
+    for (let i = 0; i < n; i++) {
+      const a0 = rot + (i / n) * Math.PI * 2;
+      const a1 = rot + ((i + 1) / n) * Math.PI * 2;
+      g.line(x + Math.cos(a0) * r, y + Math.sin(a0) * r * squash, x + Math.cos(a1) * r, y + Math.sin(a1) * r * squash, 0.0035 * L.k, rgb, alpha);
+    }
+  }
+
+  /** Each stage's boss has its own crown: rings (夜ノ主), hexagon frames (星喰ノ番人), a flame crown (緋焔ノ王). */
+  private drawLord(g: GlyphBatch, style: EnemyStyle, w: Vec2, R: number, gt: number, now: number, rim: RGB): void {
+    const L = this.gfx.layout;
+    if (style === 'crystal') {
+      for (let i = 0; i < 3; i++) this.polygon(g, w.x, w.y, R * (1.7 + i * 0.35), 6, (gt / 2200) * (i % 2 ? -1 : 1) + i * 0.3, i === 1 ? C.white : rim, 0.8, 0.9);
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2 + gt / 1800;
+        const x0 = w.x + Math.cos(ang) * R * 2.7;
+        const y0 = w.y + Math.sin(ang) * R * 2.2;
+        this.polygon(g, x0, y0, R * 0.22, 4, ang, rim, 1.1, 1.8);
+      }
+    } else if (style === 'flame') {
+      for (let i = 0; i < 9; i++) {
+        const ang = Math.PI / 2 + (i - 4) * 0.28;
+        const flick = 0.75 + 0.25 * Math.sin(now / 90 + i * 1.9);
+        const r0 = R * 1.25;
+        const r1 = R * (1.9 + (i % 2 ? 0.5 : 0.9) * flick);
+        g.line(w.x + Math.cos(ang) * r0, w.y + Math.sin(ang) * r0, w.x + Math.cos(ang) * r1, w.y + Math.sin(ang) * r1, 0.006 * L.k, i % 2 ? C.amber : rim, 1.3);
+      }
+      g.add(Shape.Ring, w.x, w.y, R * 3.4, R * 3.4, gt / 700, rim, 0.7, 0.95, 50);
+    } else {
+      for (let i = 0; i < 3; i++) {
+        const rr = R * (3.2 + i * 0.5);
+        g.add(Shape.Ring, w.x, w.y, rr, rr * 0.35, (gt / 1600) * (i % 2 ? -1 : 1) + i, rim, 0.6, 0.96, 50);
+      }
+    }
   }
 
   /** Requirement icon: shape skeleton, motion cue, sigil trace or seal (two hands). */
@@ -619,21 +688,5 @@ function colorOf(r: Req): RGB {
   return C.amber;
 }
 
-function reqText(r: Req, techId: string): string {
-  void techId;
-  const shape = { fist: 'にぎる', open: 'ひらく', point: 'さす', two: 'ふたえ', pinch: 'つまむ', horn: 'つの', thumb: 'たてる', ell: 'かぎ' } as const;
-  switch (r.kind) {
-    case 'shape':
-      return shape[r.shape];
-    case 'motion':
-      return `${shape[r.shape]}→${{ swipe: 'はらう', push: 'おす', pull: 'ひく', flick: 'はじく' }[r.motion]}`;
-    case 'sigil':
-      return `ゆびで ${{ circle: 'まる', triangle: 'さんかく', zigzag: 'いなずま', spiral: 'うず' }[r.sigil]}`;
-    case 'seal':
-      return `印 ${{ gassho: '合', kensho: '拳掌', soshi: '双指', kanmon: '環門', kosa: '交差' }[r.seal]}`;
-    case 'spread':
-      return 'あわせて ひらく';
-  }
-}
 
 export { withShape, defaultHand };

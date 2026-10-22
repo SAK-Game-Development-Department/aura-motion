@@ -82,6 +82,8 @@ body.cursor { cursor: crosshair; }
 .res .big { font-size: 10vh; font-weight: 600; font-variant-numeric: tabular-nums; }
 .res .row { display: flex; gap: 4vh; justify-content: center; font-size: 3.2vh; margin-top: 1.5vh; color: var(--dim); }
 .res .row b { color: var(--white); font-variant-numeric: tabular-nums; }
+.res .row span { white-space: nowrap; }
+.res .row b { margin: 0 .25em; }
 .res .nick { font-size: 4vh; margin-top: 2vh; color: var(--cyan); }
 .res .newbest { font-size: 3.6vh; color: var(--amber); margin-top: 1vh; letter-spacing: .2em; }
 .ranking { position: absolute; right: 4vw; top: 50%; transform: translateY(-50%); font-size: 2.6vh; min-width: 30vh; }
@@ -158,3 +160,26 @@ body.calm .cutin .kanji { animation-name: kanjiCalm !important; }
 .lens-sys { position: absolute; left: 1.6vw; bottom: 4.5vh; white-space: pre; padding: .6em .9em; color: #ffd27a;
   border-left: 2px solid #ffb547; background: linear-gradient(90deg, rgba(60,40,10,.5), rgba(60,40,10,0)); text-shadow: 0 0 6px rgba(255,181,71,.7); }
 .calm .lens-hand, .calm .lens-sys { text-shadow: none; }
+
+/* Stage selection */
+.sel-head { position: absolute; left: 50%; top: 5vh; transform: translateX(-50%); font-size: 6vh; letter-spacing: .3em; padding-left: .3em; white-space: nowrap; }
+.sel-sub { position: absolute; left: 50%; top: 13vh; transform: translateX(-50%); font-size: 2.6vh; color: var(--dim); letter-spacing: .08em; white-space: nowrap; }
+.sel-card { --c: var(--cyan); --p: 0; position: absolute; top: 21vh; height: 62vh; padding: 3vh 1.6vw; border-radius: 1.6vh; text-align: center; overflow: hidden;
+  border: 2px solid color-mix(in srgb, var(--c) 45%, transparent); background: linear-gradient(180deg, rgba(5,6,15,.25), rgba(5,6,15,.55));
+  box-shadow: 0 0 2vh color-mix(in srgb, var(--c) 25%, transparent), inset 0 0 3vh color-mix(in srgb, var(--c) 10%, transparent);
+  transition: transform 300ms cubic-bezier(.2,.8,.2,1), box-shadow 300ms, border-color 300ms; }
+.sel-card.hue-cyan { --c: var(--cyan); } .sel-card.hue-magenta { --c: var(--magenta); } .sel-card.hue-amber { --c: var(--amber); } .sel-card.hue-vermilion { --c: #ff5a2a; }
+.sel-card.hover { transform: scale(1.04); border-color: var(--c); box-shadow: 0 0 4vh color-mix(in srgb, var(--c) 60%, transparent), inset 0 0 4vh color-mix(in srgb, var(--c) 25%, transparent); }
+.sel-card .prog { position: absolute; left: 0; bottom: 0; height: .9vh; width: calc(var(--p) * 100%); background: var(--c); box-shadow: 0 0 2vh var(--c); }
+.sel-card .lv { font-size: 4.2vh; font-weight: 700; letter-spacing: .2em; color: var(--c); text-shadow: 0 0 1.2vh var(--c); }
+.sel-card .lv small { display: block; font-size: 1.7vh; letter-spacing: .4em; font-weight: 400; color: var(--dim); margin-top: .4vh; }
+.sel-card .stars { font-size: 2.6vh; color: var(--amber); letter-spacing: .3em; margin: 1.2vh 0 2vh; }
+.sel-card .nm { font-family: 'Yu Mincho', 'YuMincho', 'Hiragino Mincho ProN', 'Noto Serif JP', serif; font-weight: 700; font-size: 6.4vh; letter-spacing: .12em; text-shadow: 0 0 1.5vh color-mix(in srgb, var(--c) 70%, transparent); }
+.sel-card .rd { font-size: 1.8vh; color: var(--dim); letter-spacing: .3em; margin-top: .6vh; }
+.sel-card .ds { font-size: 2.15vh; line-height: 1.65; margin-top: 2.6vh; text-align: left; color: rgba(244,247,255,.85); }
+.sel-card .boss { position: absolute; left: 0; right: 0; bottom: 8.5vh; font-size: 2.3vh; letter-spacing: .12em; color: var(--c); }
+.sel-card .best { position: absolute; left: 0; right: 0; bottom: 3.6vh; font-size: 2vh; color: var(--dim); }
+.sel-card .best b { color: var(--white); font-variant-numeric: tabular-nums; }
+.sel-cursor { position: absolute; left: 0; top: 0; width: 3.4vh; height: 3.4vh; margin: -1.7vh 0 0 -1.7vh; border-radius: 50%; border: 2px solid var(--amber); box-shadow: 0 0 1.5vh var(--amber); opacity: 0; transition: opacity 200ms; }
+.res .stage-name { font-size: 3vh; letter-spacing: .25em; color: var(--dim); margin-bottom: 1vh; }
+.ranking h3 small { display: block; font-size: .7em; letter-spacing: .1em; color: var(--dim); font-weight: 400; margin-top: .4vh; }

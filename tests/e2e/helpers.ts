@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 
 export interface AuraState {
   t: number;
+  stage: string;
   phase: string;
   calibStep: string | null;
   backend: string;

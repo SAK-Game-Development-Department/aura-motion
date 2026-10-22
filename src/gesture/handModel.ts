@@ -17,14 +17,14 @@ export const SHAPE_IDS: ShapeId[] = ['fist', 'open', 'point', 'two', 'pinch', 'h
 export const CORE_SHAPES: ShapeId[] = ['fist', 'open', 'point'];
 
 export const SHAPE_LABEL: Record<ShapeId, string> = {
-  fist: 'にぎる',
-  open: 'ひらく',
-  point: 'さす',
-  two: 'ふたえ',
-  pinch: 'つまむ',
-  horn: 'つの',
-  thumb: 'たてる',
-  ell: 'かぎ',
+  fist: '握る',
+  open: '開く',
+  point: '指す',
+  two: '二指',
+  pinch: '摘む',
+  horn: '角',
+  thumb: '親指',
+  ell: '鉤',
 };
 
 export interface SynthHand {

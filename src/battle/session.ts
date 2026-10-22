@@ -79,7 +79,7 @@ export class BattleSession {
   }
 
   get windowScale(): number {
-    return (this.o.windowScale?.() ?? 1) * this.difficulty.windowScale;
+    return (this.o.windowScale?.() ?? 1) * this.difficulty.windowScale * (this.stage.window ?? 1);
   }
 
   /** The requirement the player must perform for a technique (one-hand alternatives applied). */

@@ -29,6 +29,7 @@ export class Background {
   readonly uCrystal = uniform(0);
   readonly uEclipse = uniform(0);
   readonly uStorm = uniform(0);
+  readonly uEmber = uniform(0);
   /** Warp speed for the star corridor (rises with action). */
   readonly uWarp = uniform(1);
 
@@ -166,6 +167,26 @@ export class Background {
       const sn = mx_noise_float(vec3((cos(sw) as N).mul(rr.mul(3.0)), (sin(sw) as N).mul(rr.mul(3.0)), t.mul(0.15)) as N).mul(0.5).add(0.5) as N;
       return magL.mul(sn.mul(sn).mul(0.35).mul(smoothstep(0.05, 0.5, rr))).add(nebulaC.mul(sn.mul(0.12))) as N;
     });
+    // ── 紅蓮ノ原 (Crimson Field): a glowing horizon of heat and embers rising ──
+    const verm = vec3(...hexToLinear(PALETTE.vermilion));
+    this.layer(this.uEmber, () => {
+      const q = uv() as N;
+      const p = P();
+      // Heat glow from below, rolling with slow noise.
+      const heatN = mx_noise_float(vec3(p.x.mul(2.0), p.y.mul(3.0).sub(t.mul(0.35)), t.mul(0.1)) as N).mul(0.5).add(0.5) as N;
+      const heat = smoothstep(0.55, 0.0, q.y).mul(heatN.mul(0.5).add(0.3)).mul(0.5) as N;
+      // Embers: columns of sparks drifting up (hash per column, wobbling).
+      const cols = float(46);
+      const cx = q.x.mul(cols) as N;
+      const col = floor(cx) as N;
+      const r1 = hash(col) as N;
+      const r2 = hash(col.add(31.0)) as N;
+      const yy = fract(q.y.mul(0.8).sub(t.mul(r2.mul(0.12).add(0.05))).add(r1)) as N;
+      const xx = fract(cx).sub(0.5).add(sin(q.y.mul(9.0).add(t.mul(1.3)).add(r1.mul(6.28))).mul(0.25)) as N;
+      const spark = smoothstep(0.09, 0.0, length(vec2(xx, yy.sub(0.5).mul(cols.div(9.0)))) as N).mul(step01(r1, 0.45)).mul(smoothstep(1.0, 0.3, q.y)) as N;
+      return verm.mul(heat).add(mix(verm, amber, r2).mul(spark.mul(1.4))).add(vec3(0.05, 0.005, 0.0).mul(heatN)) as N;
+    });
+
     // Fold the weight and the cinematic darkening into each layer.
     for (const l of this.layers) {
       const m = l.mesh.material as THREE.MeshBasicNodeMaterial;
