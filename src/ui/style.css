@@ -147,3 +147,14 @@ body.cursor { cursor: crosshair; }
 @keyframes read { 0%, 18% { opacity: 0; transform: translateY(1vh); } 30% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
 body.calm .cutin .kanji { animation-name: kanjiCalm !important; }
 @keyframes kanjiCalm { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Tech Lens (T key; automatic in the attract demo) */
+.lens { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s; z-index: 6;
+  font: 500 clamp(11px, 1.6vh, 20px)/1.45 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; color: #9ff4ff; }
+.lens.on { opacity: 1; }
+.lens-hand { position: absolute; left: 0; top: 0; white-space: pre; padding: .5em .8em; transition: opacity .2s;
+  border-left: 2px solid #5ef0ff; background: linear-gradient(90deg, rgba(20,60,80,.45), rgba(20,60,80,0));
+  text-shadow: 0 0 6px rgba(94,240,255,.8); }
+.lens-sys { position: absolute; left: 1.6vw; bottom: 4.5vh; white-space: pre; padding: .6em .9em; color: #ffd27a;
+  border-left: 2px solid #ffb547; background: linear-gradient(90deg, rgba(60,40,10,.5), rgba(60,40,10,0)); text-shadow: 0 0 6px rgba(255,181,71,.7); }
+.calm .lens-hand, .calm .lens-sys { text-shadow: none; }

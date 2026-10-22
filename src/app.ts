@@ -30,8 +30,9 @@ import type { InputSource } from './input/source';
 import { FieldBuilder, HAND_SPLATS } from './input/tracking/field';
 import { Gfx } from './render/gfx';
 import { QualityGovernor } from './render/quality';
-import { WorldView } from './render/world';
+import { WorldView, type WorldTheme } from './render/world';
 import { Hud } from './ui/hud';
+import { TechLens } from './ui/techLens';
 import { battleBot } from './battle/bot';
 import { BattleSession, type BattleEvent } from './battle/session';
 import { generateValidBattle, type BattleStage } from './battle/stage';
@@ -50,6 +51,9 @@ export class App {
   private world!: WorldView;
   private hud!: Hud;
   private debug!: DebugOverlay;
+  private lens!: TechLens;
+  /** Tech Lens: auto (attract demo and results), or forced on/off with T. */
+  private lensMode: 'auto' | 'on' | 'off' = 'auto';
   private source: InputSource | null = null;
   private sourceOff: Array<() => void> = [];
   readonly engine: GestureEngine;
@@ -129,10 +133,11 @@ export class App {
     this.hud.show('loading');
     this.hud.setLoading(0.02, 'がめんを じゅんびちゅう…');
     this.debug = new DebugOverlay(document.body);
+    this.lens = new TechLens(document.body);
     if (this.rt.debug) this.debug.toggle(true);
 
     this.gfx = await Gfx.create(this.canvas, { forceWebGL: this.rt.forceWebGL });
-    this.quality = new QualityGovernor({ webgl: this.gfx.backend === 'webgl2', startLevel: this.rt.quality ?? RENDER.startLevel });
+    this.quality = new QualityGovernor({ webgl: this.gfx.backend === 'webgl2', startLevel: this.rt.quality ?? RENDER.startLevel, particles: this.rt.flags.particles });
     const maxParticles = this.rt.flags.particles ? RENDER.particleLevels[this.quality.maxParticleLevel]! : 0;
     this.world = new WorldView(this.gfx, maxParticles, TRACKING.fieldW, TRACKING.fieldH);
     this.world.fxEnabled = this.rt.flags.fx;
@@ -270,6 +275,7 @@ export class App {
     const k = e.key.toLowerCase();
     if (this.source?.kind === 'mouse' && /^[0-9]$|^arrow|^[+=\-gz ]$/.test(k)) return; // mouse-mode controls
     if (k === 'd') this.debug.toggle();
+    else if (k === 't' && !e.repeat) this.lensMode = this.lensMode === 'auto' ? (this.lens.visible ? 'off' : 'on') : this.lensMode === 'on' ? 'off' : 'auto';
     else if (k === 'f') {
       if (document.fullscreenElement) void document.exitFullscreen();
       else void document.documentElement.requestFullscreen?.();
@@ -292,6 +298,7 @@ export class App {
 
   private setPhase(p: Phase): void {
     this.phase = p;
+    if (this.world) this.world.theme = p === 'results' ? 'stars' : 'lake';
     this.phaseAt = this.clock();
     this.hud.show(p === 'practice' ? 'play' : p);
     if (p !== 'play') this.hud.setMarks([]);
@@ -384,7 +391,7 @@ export class App {
       ranking: this.scores.list(),
       flow: 0,
       isBest: sc.score > todayBest && sc.score > 0,
-      extra: `<span>はらった かげ <b>${b.kills}</b></span>${b.ultimates ? '<span><b>天輪結界</b> 成功</span>' : ''}`,
+      extra: `<span>はらった かげ <b>${b.kills}</b></span>${b.ultimates - (b.hiddenCleared ? 1 : 0) > 0 ? '<span><b>天輪結界</b> 成功</span>' : ''}${b.hiddenCleared ? '<span><b>暁ノ影</b> 撃破！</span>' : ''}`,
     });
     this.hud.setMarks([]);
     this.setPhase('results');
@@ -440,7 +447,7 @@ export class App {
     else if (this.phase !== 'loading' && !this.rt.virtualTime && this.quality.sample(now, dtMs)) {
       this.world.particles?.setCount(this.rt.particles ?? this.quality.particles);
       this.gfx.setResolutionScale(this.quality.resolutionScale);
-      this.gfx.setEffects(this.quality.state.effects && this.rt.flags.fx);
+      this.gfx.setEffects(this.quality.state.effects && this.rt.flags.fx, this.quality.state.lens);
     }
 
     this.source?.tick(now);
@@ -572,6 +579,17 @@ export class App {
       this.breakdown['track.seg'] = st.segMs;
       this.breakdown['track.fld'] = st.fieldMs;
     }
+    this.lens.setVisible(this.lensMode === 'on' || (this.lensMode === 'auto' && (this.phase === 'title' || this.phase === 'results')));
+    if (this.lens.visible) {
+      const cam = this.source instanceof CameraSource ? this.source : null;
+      const L = this.gfx.layout;
+      this.lens.update(
+        now,
+        g,
+        { fps: this.fps, latencyMs: this.lat.pipeline + this.lat.display, particles: this.world.particles?.count ?? 0, backend: this.gfx.backend, tracking: cam?.status().backend ?? this.source?.kind ?? 'none', trackFps: cam?.stats.fps ?? 30 },
+        (p) => L.viewToScreen(p),
+      );
+    }
     if (this.debug.shown) {
       this.debug.setHand(g?.hands[0] ?? null);
       this.debug.update(now, this.debugStats());
@@ -589,6 +607,7 @@ export class App {
     this.lastUi = ui;
     if (ui.cutin) this.hud.cutin(ui.cutin.title, ui.cutin.reading, ui.cutin.hue, ui.cutin.big);
     if (ui.hurt) this.hud.hurt();
+    if (ui.combo) this.hud.announce(`${ui.combo} れんげき！`);
     const L = this.gfx.layout;
     for (const e of bev) {
       if (e.type === 'hit') {
@@ -606,6 +625,8 @@ export class App {
           this.hud.judge('miss', sp.x, sp.y - L.h * 0.06);
         }
       } else if (e.type === 'section') {
+        const theme: Record<string, WorldTheme> = { intro: 'lake', rush: 'stars', guard: 'crystal', boss: 'eclipse', hidden: 'storm' };
+        this.world.theme = theme[e.kind] ?? 'lake';
         this.sectionIdx++;
         this.hud.setSection(this.sectionIdx, e.kind, false);
         const name: Record<string, string> = { intro: 'かげが あらわれた', rush: 'むれが くる！', guard: 'ひらいて おして ふせげ', boss: '夜ノ主（よるのぬし）', hidden: '' };

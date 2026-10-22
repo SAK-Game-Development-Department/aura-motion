@@ -70,7 +70,7 @@ export class Hud {
     this.layers = { loading: mk('loading'), title: mk('title'), calibrate: mk('calibrate'), play: mk('play'), results: mk('results'), error: mk('error') };
 
     // Shared privacy notice (title + loading + error).
-    const privacy = '<b>映像は端末の外に出ず、保存されません。</b>&nbsp;カメラは姿勢と輪郭の推定だけに使います（顔の識別はしません）。';
+    const privacy = '<b>映像は端末の外に出ず、保存されません。</b>&nbsp;カメラは手の形と動きの推定だけに使います（顔の認識・識別はしません）。';
     for (const s of ['loading', 'title', 'error'] as const) this.layers[s].appendChild(h('div', 'privacy', privacy));
 
     // Loading

@@ -61,6 +61,8 @@ export class BattleSession {
   now = 0;
   kills = 0;
   ultimates = 0;
+  /** The hidden boss was sealed with its own ultimate. */
+  hiddenCleared = false;
   hurts = 0;
   /** Hidden boss state: when it appeared, and the remnant wave clock. */
   hiddenAt: number | null = null;
@@ -197,6 +199,7 @@ export class BattleSession {
       }
       if (a.e.kind === 'eclipse' && a.hits >= Math.ceil(a.e.steps.length * 0.6)) {
         this.ultimates++;
+        this.hiddenCleared = true;
         this.score.score += 5000;
         this.events.push({ type: 'ultimate', t, enemy: a.e.id, chain: a.hits, hidden: true });
       }

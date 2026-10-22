@@ -21,7 +21,7 @@ const HUE: Record<Hue, RGB> = { cyan: C.cyan, magenta: C.magenta, amber: C.amber
 const BASE_SIZE: Record<Enemy['kind'], number> = { wisp: 0.075, warden: 0.095, striker: 0.085, breaker: 0.12, lord: 0.22, eclipse: 0.26 };
 
 interface Fx {
-  kind: Technique['effect'] | 'fizzle' | 'blocked' | 'ultimate' | 'hurt';
+  kind: Technique['effect'] | 'fizzle' | 'blocked' | 'ultimate' | 'hurt' | 'rift' | 'shatter' | 'crack' | 'milestone';
   t0: number;
   dur: number;
   from: Vec2;
@@ -34,6 +34,8 @@ interface Fx {
 export interface UiRequest {
   cutin?: { title: string; reading: string; hue: Hue; big: boolean };
   hurt?: boolean;
+  /** Combo milestone reached (10, 20, …). */
+  combo?: number;
   marks: Array<{ id: string; at: Vec2; text: string; strong: boolean }>;
 }
 
@@ -56,6 +58,8 @@ export class BattleView {
 
   reset(): void {
     this.fx = [];
+    this.seen.clear();
+    this.world.particles?.setImplode(0, 0, 0);
     this.domainUntil = 0;
     this.dimUntil = 0;
     this.enemies.begin();
@@ -105,6 +109,18 @@ export class BattleView {
       } else if (e.type === 'hit') {
         const a = s.enemies.find((x) => x.e.id === e.enemy);
         const to = a ? this.enemyPos(a, gt).at : { x: 0.5, y: 0.35 };
+        if (e.kill) {
+          // Death: shards fly, a pillar of light rises, the soul drifts up.
+          const sz = a ? this.enemyPos(a, gt).size : 0.08;
+          this.fx.push({ kind: 'shatter', t0: now + travelMs(e.tech.effect), dur: 1100, from: to, to: { x: to.x, y: to.y - 0.25 }, rgb: HUE[e.tech.hue], seed: e.t + e.enemy * 7, big: Math.min(1.6, sz * 10) });
+          this.world.punch(e.boss ? 1 : 0.35);
+        }
+        // Combo milestones.
+        if (e.combo > 0 && e.combo % 10 === 0) {
+          this.fx.push({ kind: 'milestone', t0: now, dur: 1200, from: { x: 0.5, y: 0.98 }, to: { x: 0.5, y: 0.5 }, rgb: C.amber, seed: e.combo, big: Math.min(1, e.combo / 30) });
+          ui.combo = e.combo;
+          this.world.shockwave({ x: 0.5, y: 0.95 }, 1);
+        }
         const from = e.tech.req.kind === 'seal' || e.tech.req.kind === 'spread' ? { x: 0.5, y: 0.66 } : handAt(e.hand);
         const big = e.kill ? (e.boss ? 1 : 0.7) : 0.45;
         this.fx.push({ kind: e.tech.effect, t0: now, dur: effectDur(e.tech.effect), from, to, rgb: HUE[e.tech.hue], seed: e.t + e.enemy, big });
@@ -117,6 +133,22 @@ export class BattleView {
       } else if (e.type === 'hurt') {
         ui.hurt = true;
         this.world.shake.kick(0.5);
+      } else if (e.type === 'hiddenBoss') {
+        // Space cracks open; the void storm rolls in.
+        ui.cutin = { title: '暁ノ影', reading: 'かくされし あかつきのかげ', hue: 'magenta', big: true };
+        this.fx.push({ kind: 'crack', t0: now, dur: 3400, from: { x: 0.5, y: 0.35 }, to: { x: 0.5, y: 0.35 }, rgb: C.magenta, seed: e.t, big: 1 });
+        this.dimUntil = now + 2600;
+        this.world.holdTime(now, 500);
+        this.world.punch(1, 1);
+        this.world.shockwave({ x: 0.5, y: 0.35 }, 1);
+      } else if (e.type === 'ultimate' && e.hidden) {
+        ui.cutin = { title: '極光天穿', reading: 'きょっこう てんせん', hue: 'cyan', big: true };
+        this.domainT0 = now;
+        this.domainUntil = now + 3600;
+        this.dimUntil = now + 3600;
+        this.world.holdTime(now, 800);
+        this.fx.push({ kind: 'ultimate', t0: now, dur: 3400, from: { x: 0.5, y: 0.5 }, to: { x: 0.5, y: 0.3 }, rgb: C.cyan, seed: e.t, big: 1.3 });
+        this.world.flash.request(now, 0.8);
       } else if (e.type === 'ultimate') {
         ui.cutin = { title: '天輪結界', reading: 'てんりんけっかい', hue: 'amber', big: true };
         this.domainT0 = now;
@@ -131,6 +163,7 @@ export class BattleView {
   }
 
   private pendingImpacts: Array<{ at: number; to: Vec2; rgb: RGB; strength: number }> = [];
+  private seen = new Set<number>();
 
   /** Draw the battle into the glyph batch (called between glyph begin/end). */
   draw(g: GlyphBatch, now: number, gt: number, s: BattleSession, ui: UiRequest, showMarks: boolean): void {
@@ -144,6 +177,14 @@ export class BattleView {
     // Cinematic background.
     const dom = now < this.domainUntil ? ease.inOutSine(clamp(Math.min((now - this.domainT0) / 500, (this.domainUntil - now) / 700), 0, 1)) : 0;
     this.world.bg.uDomain.value = dom;
+    // Ultimate in three beats: implode (particles rush inward) → hold → release.
+    if (this.world.particles) {
+      const u = now - this.domainT0;
+      const c = L.viewToWorld({ x: 0.5, y: 0.45 });
+      const im = now < this.domainUntil ? (u < 900 ? -2.2 * ease.inCubic(u / 900) : u < 1500 ? -0.4 : u < 1900 ? 4.5 : 0) : 0;
+      if (u >= 1500 && u < 1530) this.world.shockwave({ x: 0.5, y: 0.45 }, 1);
+      this.world.particles.setImplode(c.x, c.y, im);
+    }
     const dimTarget = now < this.dimUntil ? 0.7 : 0;
     this.world.bg.uDim.value += (dimTarget - this.world.bg.uDim.value) * 0.15;
     this.enemies.uTime.value = now / 1000;
@@ -151,19 +192,37 @@ export class BattleView {
     this.enemies.begin();
     for (const a of s.enemies) {
       const p = this.enemyPos(a, gt);
+      if (!this.seen.has(a.e.id)) {
+        // Entrance: a rift tears open where the spirit emerges.
+        this.seen.add(a.e.id);
+        const big = a.e.kind === 'lord' || a.e.kind === 'eclipse' ? 1.4 : a.e.kind === 'breaker' ? 0.9 : 0.5;
+        this.fx.push({ kind: 'rift', t0: now, dur: 900, from: p.at, to: p.at, rgb: a.e.kind === 'breaker' ? C.amber : C.magenta, seed: a.e.id, big });
+      }
       if (p.alpha <= 0.01) continue;
       const w = L.viewToWorld(p.at);
       const size = L.len(p.size) * 2.6;
       const hurt = clamp(1 - (gt - a.lastMissT) / 300, 0, 1);
-      const rim = a.e.kind === 'breaker' ? C.amber : a.e.kind === 'warden' ? C.cyan : C.magenta;
+      const rim = a.e.kind === 'breaker' ? C.amber : a.e.kind === 'warden' ? C.cyan : a.e.kind === 'eclipse' ? C.white : C.magenta;
       this.enemies.add(w.x, w.y, size, rim, p.alpha * (dom > 0.5 && a.state === 'alive' ? 1 - (dom - 0.5) * 1.6 : 1), a.e.id * 1.37, hurt, p.dissolve);
       if (a.state !== 'alive' || p.dissolve > 0) continue;
       // Eyes.
       const eyeR = L.len(p.size) * 0.16;
       const blink = Math.sin(gt / 1700 + a.e.id * 3) > 0.97 ? 0.15 : 1;
       const ex = L.len(p.size) * 0.32;
-      const eyes = a.e.kind === 'lord' ? [-1.2, -0.4, 0.4, 1.2] : [-1, 1];
-      for (const k of eyes) g.add(Shape.Disk, w.x + ex * k * 0.8, w.y + L.len(p.size) * 0.12, eyeR, eyeR * blink, 0, a.e.kind === 'lord' ? C.amber : C.white, 1.3);
+      const eyes = a.e.kind === 'lord' ? [-1.2, -0.4, 0.4, 1.2] : a.e.kind === 'eclipse' ? [-1.5, -0.75, 0, 0.75, 1.5] : [-1, 1];
+      for (const k of eyes) g.add(Shape.Disk, w.x + ex * k * 0.8, w.y + L.len(p.size) * 0.12 - (a.e.kind === 'eclipse' ? Math.abs(k) * ex * 0.15 : 0), eyeR, eyeR * blink, 0, a.e.kind === 'lord' ? C.amber : a.e.kind === 'eclipse' ? C.cyan : C.white, 1.3);
+      if (a.e.kind === 'eclipse') {
+        // Hidden boss: an inverted halo and orbiting shards.
+        const R = L.len(p.size);
+        g.add(Shape.Ring, w.x, w.y, R * 3.6, R * 3.6, 0, C.white, 0.9 + 0.3 * Math.sin(now / 160), 0.97, 60);
+        for (let i = 0; i < 9; i++) {
+          const ang = (i / 9) * Math.PI * 2 + gt / 700;
+          const rr = R * (2.2 + 0.3 * Math.sin(gt / 300 + i));
+          const x0 = w.x + Math.cos(ang) * rr;
+          const y0 = w.y + Math.sin(ang) * rr * 0.8;
+          g.line(x0, y0, x0 + Math.cos(ang + 1.2) * R * 0.35, y0 + Math.sin(ang + 1.2) * R * 0.35, 0.004 * L.k, i % 2 ? C.magenta : C.cyan, 1.4);
+        }
+      }
       if (a.e.kind === 'warden' && a.step === 0) {
         const rr = L.len(p.size) * 2.9;
         g.add(Shape.Ring, w.x, w.y, rr, rr, gt / 900, C.cyan, 0.9, 0.93, 40);
@@ -443,6 +502,71 @@ export class BattleView {
             const r0 = 0.62 * L.k * kk;
             g.line(c.x + Math.cos(a0) * r0 * 0.3, c.y + Math.sin(a0) * r0 * 0.3, c.x + Math.cos(a0) * r0, c.y + Math.sin(a0) * r0, W * 0.6, C.amber, 1.1 * fade);
           }
+          break;
+        }
+        case 'rift': {
+          // A vertical tear that opens and closes, spilling sparks.
+          const open = Math.sin(Math.min(1, k * 1.4) * Math.PI);
+          const h = 0.16 * L.k * f.big * (0.6 + 0.4 * open);
+          const wdt = 0.035 * L.k * f.big * open;
+          g.add(Shape.Ring, A.x, A.y, wdt * 2, h * 2, 0, f.rgb, 1.6 * open, 0.9, 30);
+          g.add(Shape.Disk, A.x, A.y, wdt * 1.2, h * 1.6, 0, C.white, 0.9 * open);
+          for (let i = 0; i < 6; i++) {
+            const a0 = rnd(i) * Math.PI * 2;
+            const r0 = (0.02 + 0.18 * k) * L.k * f.big;
+            g.add(Shape.Disk, A.x + Math.cos(a0) * r0, A.y + Math.sin(a0) * r0 * 1.6, 0.012 * L.k, 0.012 * L.k, 0, f.rgb, 1.2 * (1 - k));
+          }
+          break;
+        }
+        case 'shatter': {
+          if (k < 0) break;
+          const kk = clamp(k, 0, 1);
+          // Shards.
+          for (let i = 0; i < 12; i++) {
+            const a0 = (i / 12) * Math.PI * 2 + rnd(i) * 0.6;
+            const sp = (0.12 + rnd(i + 20) * 0.3) * L.k * f.big;
+            const dist = sp * ease.outCubic(kk);
+            const cx = A.x + Math.cos(a0) * dist;
+            const cy = A.y + Math.sin(a0) * dist - kk * kk * 0.08 * L.k;
+            const rot = a0 + kk * (4 + rnd(i) * 6);
+            const len = 0.025 * L.k * f.big * (1 - kk * 0.6);
+            g.line(cx - Math.cos(rot) * len, cy - Math.sin(rot) * len, cx + Math.cos(rot) * len, cy + Math.sin(rot) * len, W * 1.2, i % 3 === 0 ? C.white : f.rgb, 1.6 * (1 - kk));
+          }
+          // Pillar of light.
+          const pill = Math.sin(Math.min(1, kk * 2.2) * Math.PI) ;
+          g.add(Shape.Band, A.x, A.y + 0.4 * L.k, 0.06 * L.k * f.big * pill + 0.001, 0.9 * L.k, Math.PI / 2, C.white, 0.6 * pill, 1, 0);
+          // The soul drifts upward.
+          const sy = A.y + ease.outCubic(kk) * 0.22 * L.k;
+          g.add(Shape.Disk, A.x + Math.sin(kk * 9) * 0.01 * L.k, sy, 0.035 * L.k, 0.035 * L.k, 0, C.cyan, 1.3 * (1 - kk));
+          break;
+        }
+        case 'crack': {
+          // Cracks in space radiating from a point, glowing then fading.
+          const grow = ease.outExpo(clamp(k * 3, 0, 1));
+          const fadeC = 1 - clamp((k - 0.7) / 0.3, 0, 1);
+          for (let j = 0; j < 9; j++) {
+            let px = A.x;
+            let py = A.y;
+            let ang = (j / 9) * Math.PI * 2 + rnd(j) * 0.5;
+            const segs = 6;
+            for (let i = 0; i < segs; i++) {
+              const len = (0.05 + rnd(j * 10 + i) * 0.07) * L.k * grow;
+              ang += (rnd(j * 31 + i) - 0.5) * 1.1;
+              const nx = px + Math.cos(ang) * len;
+              const ny = py + Math.sin(ang) * len;
+              g.line(px, py, nx, ny, W * (1.6 - i * 0.2), i % 2 ? C.white : f.rgb, 1.7 * fadeC);
+              px = nx;
+              py = ny;
+            }
+          }
+          break;
+        }
+        case 'milestone': {
+          // A wide arc of light sweeping up from the bottom edge.
+          const kk = ease.outCubic(k);
+          const rr = (0.3 + 1.6 * kk) * L.k;
+          g.add(Shape.Ring, A.x, A.y - 0.1 * L.k, rr * 2, rr * 1.2, 0, f.rgb, 1.5 * (1 - k), 0.985, 70);
+          g.add(Shape.Ring, A.x, A.y - 0.1 * L.k, rr * 1.7, rr * 1.0, 0, C.white, 1.0 * (1 - k), 0.985, 70);
           break;
         }
         case 'fizzle': {
