@@ -17,7 +17,8 @@
 | 認識の評価レポート | `npm run gesture-eval` → `docs/gesture-eval.md`（合成データ） |
 | E2E | `npm run e2e`（ビルド後の preview に対して。ヘッドレスでも WebGPU(SwiftShader)/WebGL2 が動く） |
 | ソーク | `SOAK_MINUTES=30 npm run soak` → `soak-out/*.csv` |
-| ビルド / デプロイ | `npm run build`（Pages の制限チェック付き）／`npm run deploy`（→ https://aura-motion.pages.dev） |
+| ビルド / デプロイ | `npm run build`（Pages の制限チェック付き）／`npm run deploy`（→ https://aura-motion.pages.dev。`functions/` と D1 のバインドは `wrangler.toml`） |
+| ランキングの DB | `npx wrangler d1 migrations apply aura-scores --remote`（スキーマは `migrations/`）。ローカル確認は `npx wrangler pages dev dist --binding RUN_SECRET=x` |
 | 展示用ZIP | `npm run zip` |
 
 URLパラメータ（開発・スタッフ用）: `?source=camera|synth|autoplay|mouse|replay|empty`、`?flags=-sigils,+qr`、`?onehand=1`、`?stage=easy|normal|hard`（難易度の固定。選択画面を飛ばす）、`?debug=1`、`?calm=1`、`?webgl=1`、
@@ -50,8 +51,9 @@ SwiftShader は粒子が多いと 1fps 以下になるので、E2E は `flags=-p
 ## 禁止事項
 - **音を出さない**（AudioContext、`<audio>`、効果音など、すべて禁止）。マイクも使わない
 - **映像を保存・録画・送信しない**。ランドマークも送信しない。記録機能はラボ（tools/）だけに置き、展示ビルドに入れない（E2E で検証している）
-- **外部CDN・外部への通信を使わない**（CSP の `connect-src 'self'`、eslint、E2E で担保）
+- **外部CDN・外部への通信を使わない**（CSP の `connect-src 'self'`、eslint、E2E で担保）。例外は同じオリジンの全国ランキング API（`functions/api/*` → Cloudflare D1）だけで、送るのは `src/exhibit/scorePolicy.ts` の `SUBMISSION_KEYS`（スコア・内訳・自動ニックネーム・ステージ・端末のランダム ID）に限る。カメラで遊んだときだけ送る（E2E で検証）
 - 顔の認識・識別をしない（手のランドマークのみ）
+- 名前は分かりやすく。作った漢字の熟語や「○ノ○」のような大げさな名前は使わない（技はカタカナのゲーム用語、ステージ・ボスは普通の言葉）
 - **既存作品の技名・キャラクター名・印の組み方・造形をそのまま使わない**（演出の「雰囲気」は参考にしてよいが、名前と形はオリジナル。両手の指を組む印は認識が崩れるので使わない）
 - 光過敏への配慮: 全画面の明滅は毎秒3回以下。フラッシュと揺れは必ず `render/fx/safety.ts` を通す
 - Tier を飛ばさない。フォールバック（暗所で3形、片手、マウスの緊急モード、WebGL2）を壊さない

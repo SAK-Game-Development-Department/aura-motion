@@ -51,6 +51,13 @@
 - 迷っている来場者には「上に出ている手の形をまねして」と伝える
 - 光の点滅が苦手な方: K キーで控えめモードにする
 
+## 4.5 全国ランキング（Cloudflare D1）
+- 会場のネットにつながっていれば、カメラで遊んだ結果が全国ランキングに送られる（スコアと自動ニックネームだけ）。つながっていなくてもゲームは普通に動く（リザルトに「オフライン」）
+- 止めたいとき: URL に `?flags=-online`
+- 初回の準備（済み）: `npx wrangler d1 migrations apply aura-scores --remote`、署名の秘密 `npx wrangler pages secret put RUN_SECRET --project-name aura-motion`
+- 中身を見る: `npx wrangler d1 execute aura-scores --remote --command "SELECT diff, name, score, region, datetime(at/1000,'unixepoch','+9 hours') FROM scores ORDER BY at DESC LIMIT 20"`
+- テストの記録などを消す: `npx wrangler d1 execute aura-scores --remote --command "DELETE FROM scores WHERE id = <id>"`
+
 ## 5. トラブル時の復旧
 | 症状 | まずやること | それでもだめなら |
 |---|---|---|
