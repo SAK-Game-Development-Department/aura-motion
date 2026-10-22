@@ -125,3 +125,9 @@
 - ラボは `tools/gesture-lab/` にあり、別の Vite 設定（`vite.lab.config.ts`）でビルドし、別の Pages プロジェクト（`aura-lab`）に置く
 - 記録機能（ランドマークの JSON のダウンロード）はラボだけに置く。展示用のコードからは `Recorder` を削除した。E2E で `dist/` に記録ツールの文字列が無いことを検証する
 - ラボでは、開発者が手元の画面でだけ、カメラ映像を薄く重ねて表示できる（既定はオフ。保存・送信はしない）
+
+## D17. Worker の初期化のタイムアウト（本番で判明）
+- 本番（Pages、Service Worker あり）では、Hand Landmarker の Worker（GPU）の初期化が SwiftShader で 20 秒を超え、メインスレッドにフォールバックしていた
+  （ダウンロードは 7 秒で終わり、その後 `createFromOptions` の中で 20 秒以上進捗がない。同時に SW の precache が走る）
+- 対策: タイムアウトを「進捗が無い時間」で測り（ダウンロード中は延長される）、上限を 45 秒にした。失敗時の次の候補はメインスレッドの GPU にした
+- 結果: 本番でも worker/GPU で初期化（SwiftShader で約 35 秒。実機の GPU では数秒の見込み。venue-checklist A3 で確認）

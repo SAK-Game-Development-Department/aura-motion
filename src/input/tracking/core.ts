@@ -95,6 +95,7 @@ export class TrackerCore {
       minTrackingConfidence: cfg.minTrackingConfidence,
       ...(cfg.delegate === 'GPU' ? { canvas: makeCanvas(1, 1) } : {}),
     });
+    this.post({ type: 'progress', stage: 'init', loaded: 0.6, total: 1 });
     if (segBuf) {
       restoreFactory();
       this.seg = await ImageSegmenter.createFromOptions(fileset, {

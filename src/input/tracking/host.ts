@@ -1,6 +1,6 @@
 // TrackerHost: runs TrackerCore in a module Worker (preferred) or inline on the
-// main thread. createTrackerHost() tries, in order: worker+GPU, worker+CPU,
-// inline+GPU, inline+CPU, each with a timeout.
+// main thread. createTrackerHost() tries, in order: worker+GPU, inline+GPU,
+// worker+CPU, inline+CPU, each with an inactivity timeout.
 import { Emitter } from '../../core/emitter';
 import type { TrackerFrame, TrackerInit, TrackerOut, TrackerResult } from './protocol';
 
@@ -147,7 +147,7 @@ export async function createTrackerHost(
   opts: { preferWorker: boolean; timeoutMs: number; onProgress: Progress },
 ): Promise<{ host: TrackerHost; attempts: HostAttempt[] }> {
   const order: Array<['worker' | 'inline', 'GPU' | 'CPU']> = opts.preferWorker
-    ? [['worker', 'GPU'], ['worker', 'CPU'], ['inline', 'GPU'], ['inline', 'CPU']]
+    ? [['worker', 'GPU'], ['inline', 'GPU'], ['worker', 'CPU'], ['inline', 'CPU']]
     : [['inline', 'GPU'], ['inline', 'CPU']];
   const attempts: HostAttempt[] = [];
   for (const [mode, delegate] of order) {

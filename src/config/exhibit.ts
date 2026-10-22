@@ -31,6 +31,10 @@ export const TRACKING = {
   darkLuma: 0.12,
   /** Seconds of history for stability stats. */
   statsWindowSec: 3,
-  /** Max time to wait for a worker to initialise before falling back to main thread (ms). */
-  workerInitTimeoutMs: 20_000,
+  /**
+   * Fall back to the next tracking backend after this long *without progress* (ms).
+   * Real GPUs initialise in a few seconds; software GL (SwiftShader) in a worker
+   * can take 10–25 s, especially while the service worker precaches.
+   */
+  workerInitTimeoutMs: 45_000,
 } as const;
