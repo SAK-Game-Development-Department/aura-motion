@@ -38,7 +38,7 @@ test('zero external requests and no uploads during a full camera boot + play', a
   }
   // Then a synthetic play session on the same page origin.
   await page.goto(`/${FAST}`);
-  await waitFor(page, (s) => s.phase === 'practice', 60_000);
+  await waitFor(page, (s) => s.phase === 'play', 60_000);
   await page.waitForTimeout(5000);
   expect(external).toEqual([]);
   expect(nonGet).toEqual([]);
@@ -62,6 +62,6 @@ test('no audio APIs are used', async ({ page }) => {
     };
   });
   await page.goto(`/${FAST}`);
-  await waitFor(page, (s) => s.phase === 'practice', 60_000);
+  await waitFor(page, (s) => s.phase === 'play', 60_000);
   expect(await page.evaluate(() => (window as unknown as { __audio: number }).__audio)).toBe(0);
 });

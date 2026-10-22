@@ -26,7 +26,7 @@ test(`soak ${MINUTES} min`, async ({ page }) => {
       (window as unknown as { gc?: () => void }).gc?.();
       return (window as unknown as { __aura: { inspect(): Record<string, unknown> } }).__aura.inspect();
     });
-    if (s.phase === 'practice' && lastPhase !== 'practice') plays++;
+    if (s.phase === 'results' && lastPhase !== 'results') plays++;
     lastPhase = String(s.phase);
     const ri = (s.rendererInfo ?? {}) as Record<string, number>;
     const heap = Number(s.heap ?? 0) / 2 ** 20;
@@ -42,7 +42,7 @@ test(`soak ${MINUTES} min`, async ({ page }) => {
   console.log(`soak: ${plays} plays, ${samples.length} samples → ${file}`);
 
   expect(errors).toEqual([]);
-  expect(plays).toBeGreaterThanOrEqual(Math.max(1, Math.floor(MINUTES * 1.5)));
+  expect(plays).toBeGreaterThanOrEqual(Math.max(1, Math.floor(MINUTES * 1.2)));
   // Compare the second half to the first half (after a warm-up sample).
   const warm = samples.slice(1);
   const half = Math.floor(warm.length / 2);

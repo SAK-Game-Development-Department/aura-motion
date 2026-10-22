@@ -13,6 +13,12 @@ export interface AuraState {
   casts: number;
   lastCast: string | null;
   calibrated: boolean;
+  gameT: number | null;
+  score: number | null;
+  section: string | null;
+  kills: number;
+  ultimates: number;
+  highscores: number;
   thresholdsCalibrated: boolean;
   particles: number;
   fps: number;

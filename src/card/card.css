@@ -1,16 +1,113 @@
-:root { --cyan: #3ff2ff; --magenta: #ff3fb4; --amber: #ffb43f; --white: #f4f7ff; }
-html, body { margin: 0; min-height: 100%; background: radial-gradient(ellipse at 50% 35%, #121a3a 0%, #05060f 55%, #020208 100%); color: var(--white); font-family: 'Hiragino Maru Gothic ProN', 'BIZ UDPGothic', system-ui, sans-serif; }
-#card { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8vh 6vw; box-sizing: border-box; }
-.logo { font-size: 13vw; letter-spacing: .3em; padding-left: .3em; font-weight: 300; text-shadow: 0 0 .15em var(--cyan), 0 0 .6em rgba(63,242,255,.5), 0 0 1.2em rgba(255,63,180,.3); }
-.rank { font-size: 34vw; line-height: 1; font-weight: 700; margin-top: 4vh; }
-.rank.rS { color: var(--amber); text-shadow: 0 0 .1em var(--amber), 0 0 .4em rgba(255,180,63,.6); }
-.rank.rA { color: var(--cyan); text-shadow: 0 0 .1em var(--cyan), 0 0 .4em rgba(63,242,255,.6); }
-.rank.rB, .rank.rC { color: var(--magenta); text-shadow: 0 0 .1em var(--magenta), 0 0 .4em rgba(255,63,180,.5); }
-.score { font-size: 14vw; font-weight: 600; font-variant-numeric: tabular-nums; text-shadow: 0 0 .2em rgba(63,242,255,.8); }
-.meta { margin-top: 2vh; color: rgba(244,247,255,.6); letter-spacing: .1em; }
-.meta b { color: var(--white); }
-.name { margin-top: 3vh; font-size: 6vw; color: var(--cyan); }
-.date { margin-top: 1vh; color: rgba(244,247,255,.5); }
-.save { margin-top: 6vh; font-size: 3.6vw; color: rgba(244,247,255,.45); }
-.bad { color: var(--amber); }
-@media (min-width: 700px) { .logo { font-size: 64px; } .rank { font-size: 200px; } .score { font-size: 80px; } .name { font-size: 32px; } .save { font-size: 16px; } }
+:root {
+    --cyan: #3ff2ff;
+    --magenta: #ff3fb4;
+    --amber: #ffb43f;
+    --white: #f4f7ff;
+}
+html,
+body {
+    margin: 0;
+    min-height: 100%;
+    background: radial-gradient(
+        ellipse at 50% 35%,
+        #121a3a 0%,
+        #05060f 55%,
+        #020208 100%
+    );
+    color: var(--white);
+    font-family:
+        "Hiragino Maru Gothic ProN", "BIZ UDPGothic", system-ui, sans-serif;
+}
+#card {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 8vh 6vw;
+    box-sizing: border-box;
+}
+.logo {
+    font-size: 13vw;
+    letter-spacing: 0.3em;
+    padding-left: 0.3em;
+    font-weight: 300;
+    text-shadow:
+        0 0 0.15em var(--cyan),
+        0 0 0.6em rgba(63, 242, 255, 0.5),
+        0 0 1.2em rgba(255, 63, 180, 0.3);
+}
+.rank {
+    font-size: 34vw;
+    line-height: 1;
+    font-weight: 700;
+    margin-top: 4vh;
+}
+.rank.rS {
+    color: var(--amber);
+    text-shadow:
+        0 0 0.1em var(--amber),
+        0 0 0.4em rgba(255, 180, 63, 0.6);
+}
+.rank.rA {
+    color: var(--cyan);
+    text-shadow:
+        0 0 0.1em var(--cyan),
+        0 0 0.4em rgba(63, 242, 255, 0.6);
+}
+.rank.rB,
+.rank.rC {
+    color: var(--magenta);
+    text-shadow:
+        0 0 0.1em var(--magenta),
+        0 0 0.4em rgba(255, 63, 180, 0.5);
+}
+.score {
+    font-size: 14vw;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 0.2em rgba(63, 242, 255, 0.8);
+}
+.meta {
+    margin-top: 2vh;
+    color: rgba(244, 247, 255, 0.6);
+    letter-spacing: 0.1em;
+}
+.meta b {
+    color: var(--white);
+}
+.name {
+    margin-top: 3vh;
+    font-size: 6vw;
+    color: var(--cyan);
+}
+.date {
+    margin-top: 1vh;
+    color: rgba(244, 247, 255, 0.5);
+}
+.save {
+    margin-top: 6vh;
+    font-size: 3.6vw;
+    color: rgba(244, 247, 255, 0.45);
+}
+.bad {
+    color: var(--amber);
+}
+@media (min-width: 700px) {
+    .logo {
+        font-size: 64px;
+    }
+    .rank {
+        font-size: 200px;
+    }
+    .score {
+        font-size: 80px;
+    }
+    .name {
+        font-size: 32px;
+    }
+    .save {
+        font-size: 16px;
+    }
+}

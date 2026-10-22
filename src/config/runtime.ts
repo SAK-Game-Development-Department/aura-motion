@@ -14,6 +14,8 @@ export interface Runtime {
   calm: boolean;
   /** One-hand mode: every technique has a one-hand alternative; two-hand moves are never required. */
   oneHand: boolean;
+  /** Free practice (live recognition) instead of the battle. */
+  practice: boolean;
   forceWebGL: boolean;
   quality: number | null;
   /** Fixed particle count override (tests / screenshots). */
@@ -47,6 +49,7 @@ export function readRuntime(search: string): Runtime {
     debug: q.get('debug') === '1',
     calm: q.get('calm') === '1',
     oneHand: q.get('onehand') === '1',
+    practice: q.get('practice') === '1',
     forceWebGL: q.get('webgl') === '1',
     quality: quality !== null ? Math.max(0, Math.min(5, Number(quality))) : null,
     particles: q.get('particles') !== null ? Math.max(0, Number(q.get('particles'))) : null,

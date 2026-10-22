@@ -2,7 +2,8 @@
 //
 //   loading → title (ghost-hand attract when empty / hand placement guide)
 //   → calibrate (open & fist → personal thresholds; fist on the beat → latency)
-//   → practice (P1: free play with live recognition)  … → title
+//   → play (90 s battle: intro/tutorial → rush → guard → boss) → results → title
+//   (?practice=1: free play with live recognition instead of the battle)
 //
 // Handles camera errors (→ mouse emergency mode), tracking stalls (→ restart),
 // exceptions (→ soft reset), empty booth (→ title) and a stalled loop (→ reload).
@@ -31,8 +32,17 @@ import { Gfx } from './render/gfx';
 import { QualityGovernor } from './render/quality';
 import { WorldView } from './render/world';
 import { Hud } from './ui/hud';
+import { battleBot } from './battle/bot';
+import { BattleSession, type BattleEvent } from './battle/session';
+import { generateValidBattle, type BattleStage } from './battle/stage';
+import { BattleView, type UiRequest } from './render/battleView';
+import { hash32 } from './core/rng';
+import { nickname } from './exhibit/nickname';
+import { rankOf, multiplier } from './game/score';
+import { sealHands, type ShapeId } from './gesture/handModel';
+import type { Vec2 } from './core/types';
 
-type Phase = 'loading' | 'title' | 'calibrate' | 'practice' | 'error';
+type Phase = 'loading' | 'title' | 'calibrate' | 'practice' | 'play' | 'results' | 'error';
 type CalibStep = 'open' | 'fist' | 'beat';
 
 export class App {
@@ -81,6 +91,15 @@ export class App {
   private lastCast: { label: string; at: number } | null = null;
   private castCount = 0;
   private bench: { level: number; t0: number; samples: number[]; results: Array<Record<string, number | string>> } | null = null;
+  private battleView!: BattleView;
+  private battle: BattleSession | null = null;
+  private bstage: BattleStage | null = null;
+  private playStart = 0;
+  private sectionIdx = -1;
+  private requireNewVisitor = false;
+  private resultsPlaced = -1;
+  private demoBattle: { session: BattleSession; start: number } | null = null;
+  private lastUi: UiRequest = { marks: [] };
   private clock = (): number => (this.rt.virtualTime ? this.vt : performance.now());
 
   constructor(
@@ -99,6 +118,7 @@ export class App {
       motions: f.motions,
       sigils: f.sigils,
       twoHand: f.twoHand && !this.rt.oneHand,
+      seals: f.twoHand && !this.rt.oneHand && !degraded,
     };
   }
 
@@ -118,6 +138,7 @@ export class App {
     this.world.fxEnabled = this.rt.flags.fx;
     this.applyCalm();
     this.world.particles?.setCount(this.rt.particles ?? this.quality.particles);
+    this.battleView = new BattleView(this.gfx, this.world);
 
     window.addEventListener('resize', () => this.gfx.resize());
     window.addEventListener('keydown', (e) => this.onKey(e));
@@ -273,6 +294,7 @@ export class App {
     this.phase = p;
     this.phaseAt = this.clock();
     this.hud.show(p === 'practice' ? 'play' : p);
+    if (p !== 'play') this.hud.setMarks([]);
     if (p !== 'title') this.stopDemo();
     if (p === 'title') {
       this.presence.reset();
@@ -284,7 +306,7 @@ export class App {
   private startCalibration(now: number): void {
     this.world.transform();
     if (this.calibrated) {
-      this.startPractice();
+      this.startMain();
       return;
     }
     this.shapeCal = new GestureCalibrator();
@@ -316,6 +338,59 @@ export class App {
     this.latCal = null;
   }
 
+  private startMain(): void {
+    if (this.rt.practice) this.startPractice();
+    else this.startPlay();
+  }
+
+  private startPlay(): void {
+    const f = this.rt.flags;
+    const now = this.clock();
+    const twoHandOk = f.twoHand && !this.rt.oneHand;
+    this.bstage = generateValidBattle({
+      seed: this.rt.seed ?? hash32(Date.now() & 0xffffff),
+      flags: f,
+      oneHand: this.rt.oneHand,
+      coreOnly: this.unstable,
+      structure: f.structure,
+      twoHandOk,
+      durationMs: this.rt.playMs,
+    });
+    this.battle = new BattleSession({ stage: this.bstage, dda: f.dda, oneHand: this.rt.oneHand, twoHandOk, windowScale: () => (this.unstable ? JUDGE.unstableWindowScale : 1) });
+    this.playStart = now;
+    this.sectionIdx = -1;
+    this.world.reset();
+    this.battleView.reset();
+    this.hud.setSections(this.bstage.sections.map((s) => s.kind));
+    this.hud.setScoreVisible(true);
+    this.setPhase('play');
+  }
+
+  private endPlay(): void {
+    const b = this.battle;
+    if (!b) return;
+    const sc = b.score;
+    const nick = nickname(hash32(b.stage.seed ^ sc.score));
+    const entry = { score: sc.score, name: nick, rank: rankOf(sc), at: Date.now(), seated: false };
+    const todayBest = this.scores.today().reduce((m, e) => Math.max(m, e.score), 0);
+    this.resultsPlaced = this.scores.add(entry);
+    this.hud.setResults({
+      score: sc.score,
+      rank: entry.rank,
+      maxCombo: sc.maxCombo,
+      counts: sc.counts,
+      nick,
+      placed: this.resultsPlaced,
+      ranking: this.scores.list(),
+      flow: 0,
+      isBest: sc.score > todayBest && sc.score > 0,
+      extra: `<span>はらった かげ <b>${b.kills}</b></span>${b.ultimates ? '<span><b>天輪結界</b> 成功</span>' : ''}`,
+    });
+    this.hud.setMarks([]);
+    this.setPhase('results');
+    this.requireNewVisitor = true;
+  }
+
   private startPractice(): void {
     this.castCount = 0;
     this.setPhase('practice');
@@ -326,6 +401,8 @@ export class App {
   private softReset(reason: string): void {
     console.warn('[aura] soft reset:', reason);
     this.latCal = null;
+    this.battle = null;
+    this.battleView?.reset();
     this.world.reset();
     this.engine.reset();
     this.gframe = null;
@@ -387,8 +464,11 @@ export class App {
         if (g?.frame.newVisitor) {
           this.calibrated = false;
           this.thresholdsCalibrated = false;
+          this.requireNewVisitor = false;
         }
-        const attract = this.presence.absentFor(now) > this.rt.attractDelayMs && !this.emergency;
+        const absent = this.presence.absentFor(now);
+        if (this.requireNewVisitor && absent > 1500) this.requireNewVisitor = false;
+        const attract = absent > this.rt.attractDelayMs && !this.emergency;
         if (attract) {
           this.runDemo(now);
           showFrame = this.demo?.frame ?? null;
@@ -396,8 +476,8 @@ export class App {
           this.stopDemo();
           this.world.transform();
         }
-        this.hud.setTitle({ attract, placement: attract ? 'none' : this.placement, progress: this.presence.startProgress(now) });
-        if (!attract && this.presence.ready(now)) this.startCalibration(now);
+        this.hud.setTitle({ attract, placement: attract ? 'none' : this.placement, progress: this.requireNewVisitor ? 0 : this.presence.startProgress(now), waitingNext: this.requireNewVisitor && present });
+        if (!attract && !this.requireNewVisitor && this.presence.ready(now)) this.startCalibration(now);
         break;
       }
       case 'calibrate': {
@@ -412,11 +492,30 @@ export class App {
           this.hud.setCalib(this.latCal.pulses.length, this.latCal.matched());
           if (now > this.latCal.endT + 250) {
             this.finishCalibration();
-            this.startPractice();
+            this.startMain();
           }
         }
         this.presence.update(now, present, present ? 'ok' : 'none');
         if (this.presence.absentFor(now) > 3000) this.setPhase('title');
+        break;
+      }
+      case 'play': {
+        const b = this.battle!;
+        const gt = now - this.playStart;
+        for (const e of events) b.pushEvent(e.t - this.playStart - this.offsetMs, e);
+        const bev = b.update(gt);
+        this.handleBattleEvents(bev, now, gt, g);
+        ghost = this.tutorialGhost(b, gt, g);
+        const sc = b.score;
+        this.hud.setPlay(sc.score, sc.combo, multiplier(sc.combo), gt / b.stage.durationMs);
+        this.presence.update(now, present, present ? 'ok' : 'none');
+        if (this.presence.empty(now)) this.softReset('player left');
+        else if (b.ended) this.endPlay();
+        break;
+      }
+      case 'results': {
+        this.presence.update(now, present, present ? 'ok' : 'none');
+        if (now - this.phaseAt > this.rt.resultsMs) this.setPhase('title');
         break;
       }
       case 'practice': {
@@ -447,8 +546,20 @@ export class App {
       beatT: now,
       particles: this.rt.flags.particles,
       calib: this.phase === 'calibrate' && this.latCal ? { pulses: this.latCal.pulses, now, intervalMs: this.latCal.intervalMs, lastEvent: this.latCal.lastEvent } : null,
-      energy: this.phase === 'practice' ? 0.7 : 0.3,
+      energy: this.phase === 'play' ? (this.battle?.section === 'boss' ? 1 : 0.7) : this.phase === 'practice' ? 0.7 : 0.3,
       icons: this.phase !== 'title' || !!this.demo,
+      overlay: (gb) => {
+        const db = this.phase === 'title' && this.demo && this.demoBattle ? this.demoBattle : null;
+        const b = this.phase === 'play' ? this.battle : db?.session ?? null;
+        if (!b) return;
+        const gt = this.phase === 'play' ? now - this.playStart : now - db!.start;
+        const ui: UiRequest = { marks: [] };
+        this.battleView.draw(gb, now, gt, b, ui, true);
+        if (this.phase === 'play') {
+          const L = this.gfx.layout;
+          this.hud.setMarks(ui.marks.map((m) => ({ id: m.id, ...L.viewToScreen(m.at), text: m.text, strong: m.strong })));
+        }
+      },
     });
     const t3 = performance.now();
     this.gfx.render();
@@ -470,6 +581,58 @@ export class App {
       this.lastWatchdogAt = now;
       this.runWatchdog(now);
     }
+  }
+
+  private handleBattleEvents(bev: BattleEvent[], now: number, gt: number, g: GestureFrame | null): void {
+    const b = this.battle!;
+    const ui = this.battleView.onEvents(bev, now, gt, b, g);
+    this.lastUi = ui;
+    if (ui.cutin) this.hud.cutin(ui.cutin.title, ui.cutin.reading, ui.cutin.hue, ui.cutin.big);
+    if (ui.hurt) this.hud.hurt();
+    const L = this.gfx.layout;
+    for (const e of bev) {
+      if (e.type === 'hit') {
+        const a = b.enemies.find((x) => x.e.id === e.enemy);
+        const at = a ? this.battleView.enemyPos(a, gt).at : { x: 0.5, y: 0.4 };
+        const sp = L.viewToScreen(at);
+        this.hud.judge(e.grade, sp.x, sp.y - L.h * 0.08);
+        if (e.tech.req.kind !== 'seal' && (e.kill || e.boss)) this.hud.announce(e.tech.name);
+        this.lastCast = { label: e.tech.name, at: now };
+        this.castCount++;
+      } else if (e.type === 'miss') {
+        const a = b.enemies.find((x) => x.e.id === e.enemy);
+        if (a) {
+          const sp = L.viewToScreen(this.battleView.enemyPos(a, gt).at);
+          this.hud.judge('miss', sp.x, sp.y - L.h * 0.06);
+        }
+      } else if (e.type === 'section') {
+        this.sectionIdx++;
+        this.hud.setSection(this.sectionIdx, e.kind, false);
+        const name = { intro: 'かげが あらわれた', rush: 'むれが くる！', guard: 'ひらいて おして ふせげ', boss: '夜ノ主（よるのぬし）' }[e.kind];
+        this.hud.announce(name);
+      }
+    }
+  }
+
+  /** Tutorial: a translucent "ghost hand" demonstrates what the current tutorial spirit needs. */
+  private tutorialGhost(b: BattleSession, gt: number, g: GestureFrame | null): SynthHand[] | null {
+    const a = b.enemies.find((x) => x.state === 'alive' && x.e.tutorial && gt >= x.e.spawn + 600);
+    if (!a) return null;
+    const step = a.e.steps[a.step];
+    if (!step) return null;
+    const req = b.req(step.tech);
+    const near: Vec2 = g?.hands[0] ? { x: Math.min(0.85, g.hands[0].palm.x + 0.16), y: g.hands[0].palm.y + 0.05 } : { x: 0.72, y: 0.7 };
+    const size = g?.hands[0]?.size ?? 0.14;
+    const cycle = (gt % 1600) / 1600;
+    const base = { ...defaultHand('R'), size, wrist: { x: near.x, y: near.y + size * 0.6 } };
+    if (req.kind === 'shape' || req.kind === 'motion') {
+      // Relaxed → shape (loop) so the transformation itself is visible.
+      const k = cycle < 0.25 ? cycle / 0.25 : 1;
+      const shaped = withShape(base, req.shape as ShapeId);
+      return [k < 1 ? { ...shaped, curl: shaped.curl.map((c, i) => relaxedHand(base, 0.15).curl[i]! + (c - relaxedHand(base, 0.15).curl[i]!) * k) as SynthHand['curl'] } : shaped];
+    }
+    if (req.kind === 'seal') return sealHands(req.seal, { x: 0.5, y: 0.62 }, size);
+    return [withShape(base, 'point')];
   }
 
   private updateStability(): void {
@@ -502,14 +665,27 @@ export class App {
   // ───────────────────────── attract demo ─────────────────────────
 
   private runDemo(now: number): void {
+    if (this.demo && this.demoBattle && now - this.demoBattle.start > this.demoBattle.session.stage.durationMs + 1500) this.stopDemo();
     if (!this.demo) {
-      const source = new HandSynthSource(showcase(now), 30);
-      const engine = new GestureEngine({ shapes: SHAPE_IDS, motions: true, sigils: true, twoHand: false });
+      // Attract: the bot fights a short battle on its own (ghost hands).
+      const stage = generateValidBattle({ seed: 0xa77ac7 + (Math.floor(now / 1000) % 5), flags: this.rt.flags, oneHand: false, coreOnly: false, structure: true, twoHandOk: true, durationMs: 36_000 });
+      const start = now + 800;
+      const session = new BattleSession({ stage: { ...stage, enemies: stage.enemies.filter((e) => !e.tutorial) }, dda: false, oneHand: false, twoHandOk: true });
+      this.demoBattle = { session, start };
+      const script = this.rt.practice ? showcase(now) : battleBot(session.stage, { playStart: start, errorMs: 40, seed: 3 });
+      const source = new HandSynthSource(script, 30);
+      const engine = new GestureEngine({ shapes: SHAPE_IDS, motions: true, sigils: true, twoHand: true, seals: true });
       const demo = { source, engine, frame: null as GestureFrame | null, field: new FieldBuilder(TRACKING.fieldW, TRACKING.fieldH) };
       source.frames.on((f) => {
         const gf = engine.update(f);
         demo.frame = gf;
-        this.world.onGestureEvents(gf.events, gf, now);
+        const db = this.demoBattle;
+        if (db) {
+          for (const e of gf.events) db.session.pushEvent(e.t - db.start, e);
+          const gt = f.t - db.start;
+          const bev = db.session.update(gt);
+          this.battleView.onEvents(bev, f.t, gt, db.session, gf);
+        } else this.world.onGestureEvents(gf.events, gf, now);
         if (this.world.particles) {
           const lms = gf.hands.map((h) => h.lm);
           this.world.setField(demo.field.build(demo.field.maskFromHands(lms), lms.length ? lms.flat() : null, f.t, HAND_SPLATS));
@@ -527,6 +703,8 @@ export class App {
     this.demo.source.stop();
     this.demo.source.frames.clear();
     this.demo = null;
+    this.demoBattle = null;
+    this.battleView?.reset();
     this.world.reset();
   }
 
@@ -550,6 +728,12 @@ export class App {
     } else if (this.phase === 'calibrate' && this.calibStep === 'beat' && this.latCal) {
       // Make a fist exactly on each pulse (stance fires ~2 frames after forming).
       script = perform(this.latCal.pulses.map((p) => ({ at: p - 200, shape: 'fist' as const, holdMs: 250, formMs: 140 })), 'R');
+    } else if (this.phase === 'play' && this.bstage) {
+      script = battleBot(this.bstage, { playStart: this.playStart, offsetMs: this.offsetMs, oneHand: this.rt.oneHand, twoHandOk: this.rt.flags.twoHand && !this.rt.oneHand, errorMs: 60, missRate: 0.06, seed: this.bstage.seed });
+    } else if (this.phase === 'results') {
+      const leave = now + 1200;
+      const idle = perform([], 'R');
+      script = (t) => (t < leave ? idle(t) : []);
     } else if (this.phase === 'practice') {
       const shows = showcase(now);
       const leaveAt = now + (this.rt.fast ? 9000 : 1e12);
@@ -662,10 +846,10 @@ export class App {
     const g = this.phase === 'title' && this.demo ? this.demo.frame : this.gframe;
     this.audience.send(now, {
       phase: this.phase,
-      score: 0,
-      combo: 0,
-      section: this.lastCast && now - this.lastCast.at < 2000 ? this.lastCast.label : null,
-      progress: 0,
+      score: this.battle?.score.score ?? 0,
+      combo: this.battle?.score.combo ?? 0,
+      section: this.phase === 'play' ? (this.battle?.section ?? null) : this.lastCast && now - this.lastCast.at < 2000 ? this.lastCast.label : null,
+      progress: this.battle && this.phase === 'play' ? (now - this.playStart) / this.battle.stage.durationMs : 0,
       present: !!this.gframe?.frame.present,
       lastJudge: null,
       ranking: this.scores.today(),
@@ -722,6 +906,7 @@ export class App {
   inspect(): Record<string, unknown> {
     return {
       t: this.clock(),
+      gameT: this.phase === 'play' ? this.clock() - this.playStart : null,
       phase: this.phase,
       calibStep: this.phase === 'calibrate' ? this.calibStep : null,
       backend: this.gfx?.backend,
@@ -732,6 +917,13 @@ export class App {
       stance: this.gframe?.hands[0]?.stance ?? null,
       casts: this.castCount,
       lastCast: this.lastCast?.label ?? null,
+      score: this.battle?.score.score ?? null,
+      counts: this.battle?.score.counts ?? null,
+      section: this.battle?.section ?? null,
+      kills: this.battle?.kills ?? 0,
+      ultimates: this.battle?.ultimates ?? 0,
+      ended: this.battle?.ended ?? null,
+      highscores: this.scores.list().length,
       offsetMs: this.offsetMs,
       calibrated: this.calibrated,
       thresholdsCalibrated: this.thresholdsCalibrated,

@@ -3,7 +3,7 @@
 import { expect, test } from '@playwright/test';
 import { FAST, state, testHook, waitFor } from './helpers';
 
-test('full loop: hand shown → calibration → techniques → back to title', async ({ page }) => {
+test('full loop: hand shown → calibration → battle (all sections, boss ultimate) → results → title', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`/${FAST}`);
@@ -11,17 +11,37 @@ test('full loop: hand shown → calibration → techniques → back to title', a
   const s0 = await waitFor(page, (s) => s.phase === 'title', 60_000, seen);
   expect(['webgpu', 'webgl2']).toContain(s0.backend);
   await waitFor(page, (s) => s.phase === 'calibrate', 30_000, seen);
-  await waitFor(page, (s) => s.phase === 'practice', 40_000, seen);
+  await waitFor(page, (s) => s.phase === 'play', 40_000, seen);
   const st = await state(page);
   expect(st.thresholdsCalibrated).toBe(true);
   expect(st.calibrated).toBe(true);
-  const p = await waitFor(page, (s) => s.casts >= 3, 30_000, seen);
-  expect(p.lastCast).toBeTruthy();
-  await page.screenshot({ path: 'test-results/practice.png' });
-  // The bot leaves; after the (fast-mode) absence timeout the booth resets.
+  const sections = new Set<string>();
+  let last = st;
+  await waitFor(
+    page,
+    (s) => {
+      if (s.section) sections.add(s.section);
+      last = s;
+      return s.phase === 'results';
+    },
+    90_000,
+    seen,
+  );
+  expect([...sections]).toEqual(['intro', 'rush', 'guard', 'boss']);
+  expect(last.kills).toBeGreaterThanOrEqual(3);
+  expect(last.ultimates).toBe(1);
+  await page.screenshot({ path: 'test-results/results.png' });
   await waitFor(page, (s) => s.phase === 'title', 30_000, seen);
-  expect(seen.filter((x) => x !== 'loading').slice(0, 4)).toEqual(['title', 'calibrate', 'practice', 'title']);
+  expect(seen.filter((x) => x !== 'loading').slice(0, 5)).toEqual(['title', 'calibrate', 'play', 'results', 'title']);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('aura.highscores.v1') ?? '[]'));
+  expect(stored[0].score).toBeGreaterThan(0);
   expect(errors).toEqual([]);
+});
+
+test('practice mode (?practice=1) still offers free play', async ({ page }) => {
+  await page.goto(`/${FAST}&practice=1`);
+  await waitFor(page, (s) => s.phase === 'practice', 60_000);
+  await waitFor(page, (s) => s.casts >= 2, 30_000);
 });
 
 test('empty booth shows the ghost-hand attract demo', async ({ page }) => {
@@ -31,9 +51,9 @@ test('empty booth shows the ghost-hand attract demo', async ({ page }) => {
   await page.screenshot({ path: 'test-results/attract.png' });
 });
 
-test('hand leaving during practice returns to the title', async ({ page }) => {
+test('hand leaving during the battle returns to the title', async ({ page }) => {
   await page.goto(`/${FAST}`);
-  await waitFor(page, (s) => s.phase === 'practice', 60_000);
+  await waitFor(page, (s) => s.phase === 'play', 60_000);
   await testHook(page, 'leave');
   await waitFor(page, (s) => s.phase === 'title', 20_000);
 });
@@ -53,7 +73,7 @@ test('debug overlay (D) shows landmarks, features, confidences and the state mac
 
 test('WebGL2 fallback runs the same app', async ({ page }) => {
   await page.goto(`/${FAST}&webgl=1`);
-  const s = await waitFor(page, (x) => x.phase === 'practice', 90_000);
+  const s = await waitFor(page, (x) => x.phase === 'play', 90_000);
   expect(s.backend).toBe('webgl2');
   expect((await state(page)).errors).toBe(0);
 });

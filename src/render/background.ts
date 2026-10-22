@@ -1,7 +1,10 @@
 // Background: deep indigo void with a slow nebula, beat pulse ripples and the
 // (safety-limited) flash. Everything is subtle — the body is the star.
 import * as THREE from 'three/webgpu';
-import { float, length, mix, mx_noise_float, smoothstep, uniform, uv, vec2, vec3, vec4, exp, abs, max } from 'three/tsl';
+import { float, length, mix, mx_noise_float, smoothstep, uniform, uv, vec2, vec3, vec4, exp, abs, max, atan, cos, fract } from 'three/tsl';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type N = any;
 import { PALETTE, hexToLinear } from '../config';
 
 export class Background {
@@ -16,6 +19,10 @@ export class Background {
   readonly uAspect = uniform(16 / 9);
   readonly uIntensity = uniform(1); // section energy (Finale = high)
   readonly uWarm = uniform(0); // amber tint (flow/finale)
+  /** 0..1 barrier ("天輪結界") pattern for the ultimate. */
+  readonly uDomain = uniform(0);
+  /** 0..1 darkening for cinematic cut-ins. */
+  readonly uDim = uniform(0);
 
   constructor() {
     const mat = new THREE.MeshBasicNodeMaterial({ depthWrite: false, depthTest: false });
@@ -43,7 +50,18 @@ export class Background {
       // Hit ripple.
       const rp = length(uv().sub(0.5).mul(vec2(this.uAspect, 1)).sub(this.uRippleCenter));
       const rip = exp(abs(rp.sub(this.uRipple.mul(0.8))).mul(-35.0)).mul(max(float(0), float(1).sub(this.uRipple))).mul(0.07).mul(this.uPulseAmp);
-      const col = base.add(nebTint.mul(neb)).add(tint.mul(ring.add(rip))).add(vec3(this.uFlash));
+      // Barrier pattern: concentric rings drifting outward, rotating spokes and
+      // a lattice of short rune ticks (original design), amber on darkened void.
+      const ang = atan(p.y, p.x) as N;
+      const rr = r as N;
+      const rings = smoothstep(0.08, 0.0, abs(fract(rr.mul(5.0).sub(this.uTime.mul(0.35))).sub(0.5))).mul(0.6) as N;
+      const spokes = smoothstep(0.96, 1.0, cos(ang.mul(12.0).add(this.uTime.mul(0.8)))).mul(smoothstep(0.08, 0.25, rr)) as N;
+      const ticks = smoothstep(0.9, 1.0, cos(ang.mul(48.0).sub(this.uTime.mul(1.6)))).mul(smoothstep(0.03, 0.0, abs(rr.sub(0.36)))) as N;
+      const halo = exp(abs(rr.sub(0.36)).mul(-30.0)).mul(0.8) as N;
+      const domain = rings.add(spokes.mul(0.5)).add(ticks.mul(1.2)).add(halo).mul(smoothstep(1.0, 0.2, rr)).mul(this.uDomain) as N;
+      const amberL = vec3(...hexToLinear(PALETTE.amber));
+      const darkK = float(1).sub(max(this.uDim, this.uDomain.mul(0.6)).mul(0.85));
+      const col = base.add(nebTint.mul(neb)).add(tint.mul(ring.add(rip))).mul(darkK).add(amberL.mul(domain)).add(vec3(this.uFlash));
       return vec4(col, 1);
     })();
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);

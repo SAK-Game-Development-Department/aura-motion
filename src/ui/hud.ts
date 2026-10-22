@@ -45,6 +45,10 @@ export class Hud {
   private resEl: HTMLElement;
   private rankingEl: HTMLElement;
   private qrEl: HTMLElement;
+  private cutinEl: HTMLElement;
+  private hurtEl: HTMLElement;
+  private marksEl: HTMLElement;
+  private markPool = new Map<string, HTMLElement>();
   private errEl: HTMLElement;
   private buttons = new Map<string, HTMLElement>();
   private judgePool: HTMLElement[] = [];
@@ -123,6 +127,12 @@ export class Hud {
     }
     this.warnEl = h('div', 'warn', '');
     this.root.appendChild(this.warnEl);
+    this.marksEl = h('div', 'marks');
+    this.layers.play.appendChild(this.marksEl);
+    this.hurtEl = h('div', 'hurt');
+    this.root.appendChild(this.hurtEl);
+    this.cutinEl = h('div', 'cutin', '<i class="bar t"></i><i class="bar b"></i><i class="ink"></i><div class="ct"><div class="kanji"></div><div class="read"></div></div>');
+    this.root.appendChild(this.cutinEl);
 
     // Results
     this.resEl = h('div', 'res');
@@ -229,6 +239,45 @@ export class Hud {
     }
   }
 
+  /** Cinematic cut-in: letterbox bars, an ink stroke, the technique's name in huge kanji. */
+  cutin(title: string, reading: string, hue: 'cyan' | 'magenta' | 'amber', big: boolean): void {
+    const el = this.cutinEl;
+    el.querySelector('.kanji')!.textContent = title;
+    el.querySelector('.read')!.textContent = reading;
+    el.className = `cutin ${hue}${big ? ' big' : ''}`;
+    void el.offsetWidth;
+    el.classList.add('show');
+  }
+
+  hurt(): void {
+    this.hurtEl.classList.remove('on');
+    void this.hurtEl.offsetWidth;
+    this.hurtEl.classList.add('on');
+  }
+
+  /** Labels under weak-point marks (screen px). */
+  setMarks(marks: Array<{ id: string; x: number; y: number; text: string; strong: boolean }>): void {
+    const keep = new Set<string>();
+    for (const m of marks) {
+      keep.add(m.id);
+      let el = this.markPool.get(m.id);
+      if (!el) {
+        el = h('div', 'mark');
+        this.marksEl.appendChild(el);
+        this.markPool.set(m.id, el);
+      }
+      if (el.textContent !== m.text) el.textContent = m.text;
+      el.classList.toggle('strong', m.strong);
+      el.style.transform = `translate(${m.x.toFixed(1)}px, ${m.y.toFixed(1)}px) translate(-50%, 0)`;
+    }
+    for (const [id, el] of this.markPool) {
+      if (!keep.has(id)) {
+        el.remove();
+        this.markPool.delete(id);
+      }
+    }
+  }
+
   /** Show/hide the battle score & combo (hidden in practice). */
   setScoreVisible(on: boolean): void {
     this.scoreEl.style.display = on ? '' : 'none';
@@ -284,12 +333,13 @@ export class Hud {
   }
 
   // ── results ──
-  setResults(r: { score: number; rank: string; maxCombo: number; counts: Record<Grade, number>; nick: string; placed: number; ranking: ScoreEntry[]; flow: number; isBest: boolean; qrSvg?: string | null }): void {
+  setResults(r: { score: number; rank: string; maxCombo: number; counts: Record<Grade, number>; nick: string; placed: number; ranking: ScoreEntry[]; flow: number; isBest: boolean; qrSvg?: string | null; extra?: string }): void {
     const rankClass = r.rank === 'S' ? 'glow-a' : r.rank === 'A' ? 'glow-c' : 'glow-m';
     this.resEl.innerHTML = `
       <div class="rank ${rankClass}">${r.rank}</div>
       <div class="big glow-c">${r.score.toLocaleString('ja-JP')}</div>
       <div class="row"><span>PERFECT <b>${r.counts.perfect}</b></span><span>GOOD <b>${r.counts.good}</b></span><span>MISS <b>${r.counts.miss}</b></span><span>MAX <b>${r.maxCombo}</b></span></div>
+      ${r.extra ? `<div class="row">${r.extra}</div>` : ''}
       <div class="nick">${r.nick}</div>
       ${r.isBest ? '<div class="newbest">きょうの ベスト！</div>' : ''}`;
     this.qrEl.innerHTML = r.qrSvg ? `${r.qrSvg}<div>スマホで よみとると<br>カードを もちかえれる</div>` : '';

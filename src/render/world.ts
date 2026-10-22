@@ -55,6 +55,8 @@ export interface WorldFrame {
   dim?: number;
   /** Show the recognised-shape icon above the hand. */
   icons: boolean;
+  /** Extra drawing into the glyph batch (battle). */
+  overlay?: (g: GlyphBatch) => void;
 }
 
 const KEYPOINTS = [0, 4, 8, 12, 16, 20, 5, 9, 13, 17, 2, 6, 10, 14, 18, 3];
@@ -67,7 +69,7 @@ export function shapeColor(s: ShapeId): RGB {
 
 export class WorldView {
   readonly bg = new Background();
-  readonly glyphs = new GlyphBatch(2400);
+  readonly glyphs = new GlyphBatch(4000);
   readonly sparks = new Sparks(900);
   readonly flash = new FlashLimiter(SAFETY.defaultFlashIntensity);
   readonly shake = new Shake(SAFETY.defaultShakeIntensity);
@@ -111,6 +113,11 @@ export class WorldView {
   transform(): void {
     this.reveal = 0;
     this.revealTarget = 1;
+  }
+
+  /** Freeze visuals (slow motion) for `ms` — cinematic beats. Game time keeps running. */
+  holdTime(now: number, ms: number): void {
+    if (this.fxEnabled) this.hitStopUntil = Math.max(this.hitStopUntil, now + ms * Math.max(0.3, this.shake.intensity + 0.4));
   }
 
   /** Hit = 1) hit stop 2) radiate 3) linger (docs/art-direction.md). */
@@ -200,6 +207,7 @@ export class WorldView {
     }
     for (const slot of [...this.trails.keys()]) if (!seen.has(slot)) this.trails.delete(slot);
     if (f.calib) this.drawCalib(f.calib, hands[0]?.palm ?? { x: 0.5, y: 0.55 }, hands[0]?.size ?? 0.15);
+    f.overlay?.(g);
     this.sparks.update(visDt);
     this.sparks.draw(g);
     this.drawEffects(now);
@@ -252,7 +260,7 @@ export class WorldView {
     if (h.stance) {
       // Charge: the ring contracts onto the palm as the stance charges.
       const ch = ease.outCubic(h.charge);
-      const rr = pr * (2.4 - 0.9 * ch);
+      const rr = pr * (1.7 - 0.6 * ch);
       g.add(Shape.Ring, palm.x, palm.y, rr, rr, 0, stanceRgb, (0.25 + 0.5 * ch) * k * (h.state === 'spent' ? 0.4 : 1), 0.94, 45);
       if (f.icons) this.drawIcon(h.stance, { x: h.palm.x, y: h.palm.y - h.size * 2.6 }, h.size * 0.55, stanceRgb, 1.1 * k);
     } else if (f.icons && h.decision.best && h.decision.bestConf > 0.4) {

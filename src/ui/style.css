@@ -63,7 +63,7 @@ body.cursor { cursor: crosshair; }
 .judge.miss { color: rgba(160,170,210,.7); font-size: 3.2vh; animation-name: sink; }
 @keyframes pop { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.6); } 18% { opacity: 1; transform: translate(-50%, -60%) scale(1.12); } 60% { opacity: 1; transform: translate(-50%, -80%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -110%) scale(.96); } }
 @keyframes sink { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, 20%); } }
-.banner { position: absolute; left: 50%; top: 22vh; transform: translateX(-50%); font-size: 6vh; letter-spacing: .3em; white-space: nowrap; opacity: 0; }
+.banner { position: absolute; left: 50%; top: 70vh; transform: translateX(-50%); font-size: 6vh; letter-spacing: .3em; white-space: nowrap; opacity: 0; }
 .banner.show { animation: banner 1800ms cubic-bezier(.2,.8,.2,1) forwards; }
 @keyframes banner { 0% { opacity: 0; letter-spacing: .6em; } 20% { opacity: 1; letter-spacing: .3em; } 75% { opacity: 1; } 100% { opacity: 0; letter-spacing: .2em; } }
 .warn { position: absolute; left: 50%; top: 13vh; transform: translateX(-50%); font-size: 3vh; padding: .5em 1.2em; border-radius: 3vh; border: 1px solid rgba(255,180,63,.6); color: var(--amber); background: rgba(5,6,15,.6); opacity: 0; transition: opacity 400ms; white-space: nowrap; }
@@ -105,3 +105,45 @@ body.cursor { cursor: crosshair; }
 /* Result card QR (Tier 2) */
 .qr { position: absolute; left: 4vw; top: 50%; transform: translateY(-50%); text-align: center; font-size: 2vh; color: var(--dim); line-height: 1.5; }
 .qr svg { width: 22vh; height: 22vh; display: block; margin: 0 auto 1.2vh; background: #f4f7ff; border-radius: 1vh; padding: 1vh; box-shadow: 0 0 2vh rgba(63,242,255,.35); }
+
+/* ── Battle ── */
+.marks { position: absolute; inset: 0; }
+.mark { position: absolute; left: 0; top: 0; transform-origin: center; font-size: 2.6vh; color: rgba(244,247,255,.85); white-space: nowrap; letter-spacing: .08em; text-shadow: 0 0 .5em rgba(5,6,15,.9), 0 0 .2em rgba(5,6,15,.9); will-change: transform; }
+.mark.strong { font-size: 3.4vh; color: var(--amber); text-shadow: 0 0 .4em rgba(255,180,63,.8), 0 0 .2em rgba(5,6,15,.9); }
+.hurt { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(255,63,180,.38) 100%); }
+.hurt.on { animation: hurt 700ms cubic-bezier(.2,.7,.2,1); }
+@keyframes hurt { 0% { opacity: 0; } 15% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Cut-in: bars slide in, an ink stroke wipes across, the name lands in huge kanji. */
+.cutin { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+.cutin.show { animation: cutinFade 1300ms linear forwards; }
+.cutin.big.show { animation-duration: 2800ms; }
+@keyframes cutinFade { 0% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
+.cutin .bar { position: absolute; left: 0; right: 0; height: 11vh; background: #000; transform: scaleY(0); }
+.cutin .bar.t { top: 0; transform-origin: top; }
+.cutin .bar.b { bottom: 0; transform-origin: bottom; }
+.cutin.show .bar { animation: bar 1300ms cubic-bezier(.2,.8,.2,1) forwards; }
+.cutin.big.show .bar { animation-duration: 2800ms; }
+@keyframes bar { 0% { transform: scaleY(0); } 12% { transform: scaleY(1); } 88% { transform: scaleY(1); } 100% { transform: scaleY(0); } }
+.cutin .ink { position: absolute; left: -20vw; right: -20vw; top: 38vh; height: 24vh; transform: skewY(-6deg) scaleX(0); transform-origin: left;
+  background: linear-gradient(90deg, transparent, rgba(5,6,15,.92) 8%, rgba(5,6,15,.92) 92%, transparent); }
+.cutin.show .ink { animation: ink 1300ms cubic-bezier(.2,.8,.2,1) forwards; }
+.cutin.big.show .ink { animation-duration: 2800ms; }
+@keyframes ink { 0% { transform: skewY(-6deg) scaleX(0); } 14% { transform: skewY(-6deg) scaleX(1); } 86% { transform: skewY(-6deg) scaleX(1); opacity: 1; } 100% { transform: skewY(-6deg) scaleX(1); opacity: 0; } }
+.cutin .ct { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; }
+.cutin .kanji { font-family: 'Yu Mincho', 'YuMincho', 'Hiragino Mincho ProN', 'Noto Serif JP', 'MS PMincho', serif; font-weight: 900; font-size: 15vh; line-height: 1; letter-spacing: .12em;
+  color: #fff; -webkit-text-stroke: .02em rgba(255,255,255,.6); opacity: 0; white-space: nowrap; }
+.cutin.big .kanji { font-size: 20vh; }
+.cutin.amber .kanji { text-shadow: 0 0 .1em #ffb43f, 0 0 .4em rgba(255,180,63,.8), 0 0 1em rgba(255,180,63,.5); }
+.cutin.cyan .kanji { text-shadow: 0 0 .1em #3ff2ff, 0 0 .4em rgba(63,242,255,.8), 0 0 1em rgba(63,242,255,.5); }
+.cutin.magenta .kanji { text-shadow: 0 0 .1em #ff3fb4, 0 0 .4em rgba(255,63,180,.8), 0 0 1em rgba(255,63,180,.5); }
+.cutin.show .kanji { animation: kanji 1300ms cubic-bezier(.15,.9,.2,1) forwards; }
+.cutin.big.show .kanji { animation-duration: 2800ms; }
+@keyframes kanji { 0% { opacity: 0; transform: scale(1.9); filter: blur(12px); letter-spacing: .5em; } 16% { opacity: 1; transform: scale(1); filter: blur(0); letter-spacing: .12em; }
+  80% { opacity: 1; transform: scale(1.04); } 100% { opacity: 0; transform: scale(1.08); } }
+.cutin .read { margin-top: 1.5vh; font-size: 3vh; letter-spacing: .6em; color: rgba(244,247,255,.8); opacity: 0; }
+.cutin.show .read { animation: read 1300ms ease forwards; }
+.cutin.big.show .read { animation-duration: 2800ms; }
+@keyframes read { 0%, 18% { opacity: 0; transform: translateY(1vh); } 30% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
+body.calm .cutin .kanji { animation-name: kanjiCalm !important; }
+@keyframes kanjiCalm { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }

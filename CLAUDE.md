@@ -4,7 +4,8 @@
 1プレイ約90秒。音は一切使わない。静的サイト（Cloudflare Pages）で動作し、費用はかからない。映像は端末の外に出さない。
 
 ## 現在のフェーズ
-- **P1 実現性の検証が完了**（ジェスチャー認識・ラボ・合成データ評価）。**実機での確認待ち**。結果を見てジェスチャーセットを確定してから P2（戦闘の最小ループ）に進む
+- P1（認識・ラボ）完了。ユーザーの指示で P2/P3 を先に進め、**戦闘（敵・術・印・ボス・奥義・演出）を実装済み**。実機での認識の評価（ラボ）は並行して待っている
+- 術と敵の一覧: `docs/techniques.md`
 - 計画: `~/.claude/plans/parsed-seeking-karp.md`（P0 整理 → P1 検証 → P2 Tier0 → P3 Tier1 → P4 堅牢化 → P5 Tier2）
 
 ## コマンド
@@ -33,7 +34,9 @@ SwiftShader は粒子が多いと 1fps 以下になるので、E2E は `flags=-p
 - `src/input/` — `InputSource`（camera / replay / synth / mouse）→ `PoseFrame.hands`。`tracking/` は Hand Landmarker を Worker で動かす（D3）
 - `src/render/` — Three.js WebGPURenderer + TSL（手の粒子、光の骨格、指先の軌跡、技の演出）。`src/ui/` HUD、`src/exhibit/` 展示機能、`src/debug/` Dキーのオーバーレイ
 - `tools/gesture-lab/` — ジェスチャーラボ（ライブ認識・ランドマークだけの記録・混同行列・閾値調整）。**展示ビルドには含めない**（別の Vite 設定 `vite.lab.config.ts`）
-- `src/app.ts` — 全体の状態遷移（P1: Loading → Title → Calibrate → Practice）
+- `src/battle/` — 戦闘（決定的）: `techniques.ts`（術の一覧と条件）、`stage.ts`（シードから敵の生成と人の手の限界での検証）、`session.ts`（判定・スコア）、`bot.ts`（自動プレイ）
+- `src/render/battleView.ts` / `enemies.ts` — 影の敵、弱点の印、術ごとの演出、奥義の結界。`src/ui/hud.ts` のカットイン
+- `src/app.ts` — 全体の状態遷移（Loading → Title(アトラクト) → Calibrate → Play(戦闘90秒) → Results → Title。`?practice=1` で練習モード）
 
 ## 規約
 - 数値はすべて `src/config/` に置く（ジェスチャーの閾値は `gesture.ts`、判定は `game.ts`、手の配置は `hand.ts`）
@@ -48,7 +51,7 @@ SwiftShader は粒子が多いと 1fps 以下になるので、E2E は `flags=-p
 - **映像を保存・録画・送信しない**。ランドマークも送信しない。記録機能はラボ（tools/）だけに置き、展示ビルドに入れない（E2E で検証している）
 - **外部CDN・外部への通信を使わない**（CSP の `connect-src 'self'`、eslint、E2E で担保）
 - 顔の認識・識別をしない（手のランドマークのみ）
-- **既存作品の技・印の組み方・名称・造形を使わない**（両手の指を組む印は使わない。技名・敵・用語はすべてオリジナル）
+- **既存作品の技名・キャラクター名・印の組み方・造形をそのまま使わない**（演出の「雰囲気」は参考にしてよいが、名前と形はオリジナル。両手の指を組む印は認識が崩れるので使わない）
 - 光過敏への配慮: 全画面の明滅は毎秒3回以下。フラッシュと揺れは必ず `render/fx/safety.ts` を通す
 - Tier を飛ばさない。フォールバック（暗所で3形、片手、マウスの緊急モード、WebGL2）を壊さない
 

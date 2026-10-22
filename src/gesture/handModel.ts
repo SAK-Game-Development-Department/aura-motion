@@ -223,3 +223,48 @@ export function noisy(lm: Landmark[], rng: Rng, o: NoiseOptions, aspect = 16 / 9
     return { x, y, z, v: p.v };
   });
 }
+
+/** Translate a hand so that landmark `idx` lands on `target` (view). */
+export function placeLandmark(h: SynthHand, idx: number, target: Vec2): SynthHand {
+  const lm = buildHand(h);
+  const p = lm[idx]!;
+  return { ...h, wrist: { x: h.wrist.x + target.x - p.x, y: h.wrist.y + target.y - p.y } };
+}
+
+/**
+ * Two synthetic hands forming a seal (印) around `centre` (view). Used by the
+ * ghost hand, the bot and the seal tests.
+ */
+export function sealHands(kind: 'gassho' | 'kensho' | 'soshi' | 'kanmon' | 'kosa', centre: Vec2, size: number, aspect = 16 / 9): SynthHand[] {
+  const L0 = { ...defaultHand('L', aspect), size };
+  const R0 = { ...defaultHand('R', aspect), size };
+  const dx = (v: number) => (v * size) / aspect;
+  switch (kind) {
+    case 'gassho': {
+      // Palms together: two open hands side by side, fingers up, nearly touching.
+      const l = { ...withShape(L0, 'open'), spread: 1.0, yaw: 60, wrist: { x: centre.x - dx(0.12), y: centre.y + size * 0.6 } };
+      const r = { ...withShape(R0, 'open'), spread: 1.0, yaw: 60, wrist: { x: centre.x + dx(0.12), y: centre.y + size * 0.6 } };
+      return [l, r];
+    }
+    case 'kensho': {
+      const f = { ...withShape(L0, 'fist'), rot: 20, wrist: { x: centre.x - dx(0.55), y: centre.y + size * 0.4 } };
+      const o = { ...withShape(R0, 'open'), rot: -25, wrist: { x: centre.x + dx(0.35), y: centre.y + size * 0.55 } };
+      return [f, o];
+    }
+    case 'soshi': {
+      const l = placeLandmark({ ...withShape(L0, 'point'), rot: 50 }, 8, { x: centre.x - dx(0.08), y: centre.y - size * 0.4 });
+      const r = placeLandmark({ ...withShape(R0, 'point'), rot: -50 }, 8, { x: centre.x + dx(0.08), y: centre.y - size * 0.4 });
+      return [l, r];
+    }
+    case 'kanmon': {
+      const l = placeLandmark({ ...withShape(L0, 'ell'), rot: 10 }, 4, { x: centre.x - dx(0.1), y: centre.y + size * 0.3 });
+      const r = placeLandmark({ ...withShape(R0, 'ell'), rot: -10 }, 4, { x: centre.x + dx(0.1), y: centre.y + size * 0.3 });
+      return [l, r];
+    }
+    case 'kosa': {
+      const l = { ...withShape(L0, 'two'), rot: 35, wrist: { x: centre.x - dx(0.7), y: centre.y + size * 0.7 } };
+      const r = { ...withShape(R0, 'two'), rot: -35, wrist: { x: centre.x + dx(0.7), y: centre.y + size * 0.7 } };
+      return [l, r];
+    }
+  }
+}
