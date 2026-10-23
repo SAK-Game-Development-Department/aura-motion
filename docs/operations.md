@@ -58,6 +58,9 @@
 ## 4.5 全国ランキング（Cloudflare D1）
 - 会場のネットにつながっていれば、カメラで遊んで名前を入れた結果が全国ランキングに送られる（スコアと入れた名前だけ。名前を入れなければ送らない）。つながっていなくてもゲームは普通に動く（リザルトに「オフライン」）
 - 止めたいとき: URL に `?flags=-online`
+- リザルトに「オフライン」と出たら、その下に理由が出る: 設定でオフ／この起動方法では接続できない／ネットにつながっていない／接続が遅い／サーバーが応答しない。
+  送れなかった記録は 20 分以内なら、タイトル画面の間に自動で再送する
+- ローカルで動かすとき（`npm run dev`、ZIP の `node serve-local.mjs`）も、ネットにつながっていれば `/api` を本番の https://aura-motion.pages.dev に中継するので全国ランキングが使える（ブラウザは同じオリジンとだけ通信する）。中継先は環境変数 `AURA_API` で変更、`AURA_API=off` で中継しない
 - 初回の準備（済み）: `npx wrangler d1 migrations apply aura-scores --remote`、署名の秘密 `npx wrangler pages secret put RUN_SECRET --project-name aura-motion`
 - 中身を見る: `npx wrangler d1 execute aura-scores --remote --command "SELECT diff, name, score, region, datetime(at/1000,'unixepoch','+9 hours') FROM scores ORDER BY at DESC LIMIT 20"`
 - 不適切な名前・テストの記録を消す: `npx wrangler d1 execute aura-scores --remote --command "DELETE FROM scores WHERE id = <id>"`
