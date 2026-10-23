@@ -602,9 +602,24 @@ export class App {
       const clean = Object.fromEntries(SUBMISSION_KEYS.map((k) => [k, sub[k]])) as unknown as ScoreSubmission;
       place = await this.online.submit(clean);
     }
-    const board = await this.online.refresh(diff, 'today', place ? 0 : 30_000);
+    let board = await this.online.refresh(diff, 'today', place ? 0 : 30_000);
+    // A flaky venue network: try the board a few more times while the results are up.
+    for (let i = 0; !board && i < 3 && this.online.enabled && this.online.lastError !== 'notfound'; i++) {
+      await new Promise((r) => setTimeout(r, 2500));
+      if (id !== this.playId || this.phase !== 'results') return;
+      board = await this.online.refresh(diff, 'today', 0);
+    }
     if (id !== this.playId || this.phase !== 'results') return;
-    if (!board) this.hud.setOnline({ state: 'offline', level: lv });
+    const why: Record<string, string> = {
+      disabled: '全国ランキングは設定でオフになっています（S キー）',
+      notfound: 'この起動方法ではランキングに接続できません（本番の URL か、ネット接続のある場所で起動してください）',
+      timeout: '接続が遅いため取得できませんでした',
+      unreachable: 'ネットにつながっていません',
+      server: 'ランキングのサーバーが応答しません',
+      none: '',
+    };
+    const queued = this.online.pendingCount > 0 ? '（記録はあとで自動で送信します）' : '';
+    if (!board) this.hud.setOnline({ state: 'offline', level: lv, reason: (why[this.online.lastError] ?? '') + queued });
     else this.hud.setOnline({ state: 'ok', level: lv, list: board.list, me: name ? { name, score: sc.score } : undefined, place });
   }
 
@@ -698,6 +713,7 @@ export class App {
           // Keep the shared boards warm for the selection cards and the results.
           this.lastBoardsAt = now;
           for (const d of DIFFICULTY_IDS) void this.online.refresh(d, 'today');
+          if (this.online.pendingCount > 0) void this.online.flush();
         }
         if (!attract && !this.requireNewVisitor && this.presence.ready(now)) this.startSelect(now);
         break;

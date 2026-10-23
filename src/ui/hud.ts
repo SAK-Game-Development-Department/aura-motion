@@ -431,9 +431,9 @@ export class Hud {
   }
 
   /** Shared (nationwide) ranking on the results screen; filled in when the server answers. */
-  setOnline(o: { state: 'loading' | 'ok' | 'offline'; level: string; list?: Array<{ name: string; score: number; region: string; stageName: string }>; me?: { name: string; score: number }; place?: { placeToday: number | null; placeAll: number; total: number; updated?: boolean; best?: number } | null }): void {
+  setOnline(o: { state: 'loading' | 'ok' | 'offline'; level: string; reason?: string; list?: Array<{ name: string; score: number; region: string; stageName: string }>; me?: { name: string; score: number }; place?: { placeToday: number | null; placeAll: number; total: number; updated?: boolean; best?: number } | null }): void {
     if (o.state === 'offline') {
-      this.onlineEl.innerHTML = `<h3>全国ランキング</h3><p class="off">オフライン（この端末の記録のみ）</p>`;
+      this.onlineEl.innerHTML = `<h3>全国ランキング</h3><p class="off">オフライン（この端末の記録のみ）${o.reason ? `<br><small>${escapeHtml(o.reason)}</small>` : ''}</p>`;
       return;
     }
     if (o.state === 'loading') {

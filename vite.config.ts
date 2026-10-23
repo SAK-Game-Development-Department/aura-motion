@@ -60,6 +60,15 @@ function serviceWorkerPlugin(): Plugin {
   };
 }
 
+/**
+ * The shared ranking lives in Pages Functions (/api). Running locally there are
+ * no functions, so the dev server relays /api to the deployed site (the browser
+ * still only talks to its own origin). Set AURA_API to point elsewhere, or
+ * AURA_API=off to disable. `vite preview` (E2E) relays only with AURA_API set.
+ */
+const API_ORIGIN = process.env.AURA_API ?? 'https://aura-motion.pages.dev';
+const apiProxy = API_ORIGIN === 'off' ? undefined : { '/api': { target: API_ORIGIN, changeOrigin: true, secure: true } };
+
 export default defineConfig({
   base: './',
   build: {
@@ -75,9 +84,11 @@ export default defineConfig({
   },
   server: {
     headers: SECURITY_HEADERS,
+    proxy: apiProxy,
   },
   preview: {
     headers: SECURITY_HEADERS,
+    proxy: process.env.AURA_API && apiProxy ? apiProxy : undefined,
   },
   plugins: [serviceWorkerPlugin()],
 });

@@ -86,4 +86,41 @@ describe('shared ranking: client', () => {
     await o.refresh('easy', 'today');
     expect(n).toBe(0);
   });
+
+  it('a second request for the same board waits for the first (no false "offline")', async () => {
+    let n = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const o = new OnlineRanking(true, async () => {
+      n++;
+      await gate;
+      return new Response(JSON.stringify({ list: [], total: 0 }), { status: 200 });
+    });
+    const a = o.refresh('hard', 'today');
+    const b = o.refresh('hard', 'today', 0);
+    release();
+    expect(await a).not.toBeNull();
+    expect(await b).not.toBeNull();
+    expect(n).toBe(1);
+  });
+
+  it('says why it is offline, and keeps unsent plays for a retry', async () => {
+    const o404 = new OnlineRanking(true, async () => new Response('', { status: 404 }));
+    await o404.refresh('easy', 'today');
+    expect(o404.lastError).toBe('notfound');
+    let up = false;
+    const sent: string[] = [];
+    const o = new OnlineRanking(true, async (u, init) => {
+      if (!up) throw new Error('down');
+      if (init?.method === 'POST') sent.push(u);
+      return new Response(JSON.stringify({ placeAll: 1, placeToday: 1, total: 1, region: '', updated: true, best: 1 }), { status: 200 });
+    }, () => 0);
+    expect(await o.submit(good)).toBeNull();
+    expect(o.lastError).toBe('unreachable');
+    expect(o.pendingCount).toBe(1);
+    up = true;
+    await o.flush();
+    expect(sent).toEqual(['/api/scores']);
+    expect(o.pendingCount).toBe(0);
+  });
 });
