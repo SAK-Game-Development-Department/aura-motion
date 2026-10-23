@@ -356,19 +356,21 @@ export class Sound {
     mix.connect(lp).connect(out).connect(this.sfxBus);
     if (o.echo) this.echoSend(out, o.echo);
     const end = t + o.a + o.hold + o.r + 0.1;
+    // Two detuned saws per note, one panner per note (few nodes: big moments must not stall a frame).
     freqs.forEach((f, i) => {
-      for (const det of [-7, 0, 7]) {
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = ((i / Math.max(1, freqs.length - 1)) * 2 - 1) * 0.6;
+      const g = ctx.createGain();
+      g.gain.value = 0.27 / freqs.length;
+      g.connect(pan);
+      pan.connect(f1);
+      pan.connect(f2);
+      for (const det of [-8, 8]) {
         const osc = ctx.createOscillator();
         osc.type = 'sawtooth';
         osc.frequency.value = f;
         osc.detune.value = det + (i % 2 ? 3 : -3);
-        const pan = ctx.createStereoPanner();
-        pan.pan.value = ((i / Math.max(1, freqs.length - 1)) * 2 - 1) * 0.6;
-        const g = ctx.createGain();
-        g.gain.value = 0.18 / freqs.length;
-        osc.connect(g).connect(pan);
-        pan.connect(f1);
-        pan.connect(f2);
+        osc.connect(g);
         osc.start(t);
         osc.stop(end);
       }

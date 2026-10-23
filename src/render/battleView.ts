@@ -618,12 +618,13 @@ export class BattleView {
           // Mandala of light over the field: rotating rings + radial strokes.
           const c = L.viewToWorld({ x: 0.5, y: 0.45 });
           const kk = ease.outCubic(clamp(k * 2.5, 0, 1));
-          for (let i = 0; i < 5; i++) {
-            const rr = (0.15 + i * 0.12) * L.k * kk;
-            g.add(Shape.Ring, c.x, c.y, rr * 2, rr * 2, (now / 1000) * (i % 2 ? 1 : -1), i % 2 ? C.amber : C.white, 1.2 * fade, 0.97, 70);
+          // Three thick rings (each ring is a screen-sized quad: few of them keep the fill rate down).
+          for (let i = 0; i < 3; i++) {
+            const rr = (0.17 + i * 0.2) * L.k * kk;
+            g.add(Shape.Ring, c.x, c.y, rr * 2, rr * 2, (now / 1000) * (i % 2 ? 1 : -1), i % 2 ? C.amber : C.white, 1.4 * fade, 0.955, 70);
           }
-          for (let i = 0; i < 24; i++) {
-            const a0 = (i / 24) * Math.PI * 2 + now / 2400;
+          for (let i = 0; i < 16; i++) {
+            const a0 = (i / 16) * Math.PI * 2 + now / 2400;
             const r0 = 0.62 * L.k * kk;
             g.line(c.x + Math.cos(a0) * r0 * 0.3, c.y + Math.sin(a0) * r0 * 0.3, c.x + Math.cos(a0) * r0, c.y + Math.sin(a0) * r0, W * 0.6, C.amber, 1.1 * fade);
           }
