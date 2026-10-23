@@ -14,9 +14,14 @@ export interface OnlineBoard {
 
 export interface Placement {
   placeAll: number;
-  placeToday: number;
+  /** null when the kept best is from an earlier day. */
+  placeToday: number | null;
   total: number;
   region: string;
+  /** false: the name already had a better (or equal) score, which was kept. */
+  updated: boolean;
+  /** The name's best score now on the board. */
+  best: number;
 }
 
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;

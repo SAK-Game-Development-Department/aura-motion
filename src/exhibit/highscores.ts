@@ -1,5 +1,6 @@
-// High scores in localStorage (score + auto nickname only — no personal data).
+// High scores in localStorage (score + the name the player typed; one entry per name and difficulty).
 import { EXHIBIT } from '../config';
+import { nameKey } from './playerName';
 
 export interface ScoreEntry {
   score: number;
@@ -63,18 +64,28 @@ export class HighScores {
       .slice(0, EXHIBIT.highscores);
   }
 
-  /** Insert; returns 0-based rank in its difficulty's table or -1 if it did not place. Each difficulty keeps its own top N. */
-  add(e: ScoreEntry): number {
+  /**
+   * Record a play. The same name in the same difficulty is one player: a better
+   * score replaces the old entry, a lower one leaves it. Returns the 0-based
+   * place of that player's entry (-1 if it is not in the top N), whether it was
+   * updated, and the best score kept.
+   */
+  add(e: ScoreEntry): { place: number; updated: boolean; best: ScoreEntry } {
     const d = diffOf(e);
-    const mine = [...this.all().filter((x) => diffOf(x) === d), e].sort((a, b) => b.score - a.score || a.at - b.at).slice(0, EXHIBIT.highscores);
-    const idx = mine.indexOf(e);
-    const others = this.all().filter((x) => diffOf(x) !== d);
+    const all = this.all();
+    const key = nameKey(e.name);
+    const mineAll = all.filter((x) => diffOf(x) === d);
+    const prev = mineAll.find((x) => nameKey(x.name) === key);
+    const updated = !prev || e.score > prev.score;
+    const best = updated ? e : prev!;
+    const mine = [...mineAll.filter((x) => x !== prev), best].sort((a, b) => b.score - a.score || a.at - b.at).slice(0, EXHIBIT.highscores);
+    const others = all.filter((x) => diffOf(x) !== d);
     try {
       this.kv?.setItem(KEY, JSON.stringify([...others, ...mine]));
     } catch {
       /* storage full / blocked: scores just won't persist */
     }
-    return idx;
+    return { place: mine.indexOf(best), updated, best };
   }
 
   /** Scores achieved today (for the daily ranking). */

@@ -1,7 +1,7 @@
 // BattleSession: deterministic battle logic. Depends only on the stage, the
 // GestureEvent stream (pushEvent, with times already mapped to game time and
 // latency-corrected) and update(now).
-import { JUDGE } from '../config';
+import { GESTURE, JUDGE } from '../config';
 import type { GestureEvent } from '../gesture/engine';
 import { Difficulty } from '../game/difficulty';
 import { applyGrade, newScore, type Grade, type ScoreState } from '../game/score';
@@ -158,7 +158,19 @@ export class BattleSession {
     return null;
   }
 
-  private onCast(t: number, ev: GestureEvent): void {
+  /**
+   * When the player actually *did* the move. A held shape only casts after the
+   * charge (≈0.4 s) and a seal after its short hold — but the player formed it
+   * when the timing ring closed, so judge from the moment the shape was formed.
+   */
+  private judgedTime(t: number, ev: GestureEvent): number {
+    if (ev.type === 'cast' && ev.release === 'hold') return t - GESTURE.chargeMs * JUDGE.holdLeadFraction;
+    if (ev.type === 'seal') return t - GESTURE.seal.assistHoldMs;
+    return t;
+  }
+
+  private onCast(t0: number, ev: GestureEvent): void {
+    const t = this.judgedTime(t0, ev);
     const ws = this.windowScale;
     const goodW = JUDGE.goodMs * ws;
     const perfW = JUDGE.perfectMs * ws;

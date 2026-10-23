@@ -86,11 +86,25 @@ describe('HighScores & nickname', () => {
   };
   it('keeps the top N sorted', () => {
     const hs = new HighScores(mem());
-    for (let i = 0; i < 15; i++) hs.add({ score: i * 100, name: 'x', rank: 'A', at: i, seated: false });
+    for (let i = 0; i < 15; i++) hs.add({ score: i * 100, name: `p${i}`, rank: 'A', at: i, seated: false });
     const l = hs.list();
     expect(l).toHaveLength(EXHIBIT.highscores);
     expect(l[0]!.score).toBe(1400);
-    expect(hs.add({ score: 5, name: 'y', rank: 'C', at: 99, seated: false })).toBe(-1);
+    expect(hs.add({ score: 5, name: 'y', rank: 'C', at: 99, seated: false }).place).toBe(-1);
+  });
+  it('one entry per name and difficulty: only a better score overwrites', () => {
+    const hs = new HighScores(mem());
+    hs.add({ score: 500, name: 'タツヤ', rank: 'B', at: 1, seated: false, diff: 'easy' });
+    const lower = hs.add({ score: 300, name: 'たつや', rank: 'C', at: 2, seated: false, diff: 'easy' });
+    expect(lower.updated).toBe(false);
+    expect(lower.best.score).toBe(500);
+    const higher = hs.add({ score: 900, name: 'タツヤ', rank: 'A', at: 3, seated: false, diff: 'easy' });
+    expect(higher.updated).toBe(true);
+    expect(hs.list({ diff: 'easy' }).map((e) => e.score)).toEqual([900]);
+    // Another difficulty is a separate board.
+    hs.add({ score: 100, name: 'タツヤ', rank: 'C', at: 4, seated: false, diff: 'hard' });
+    expect(hs.list({ diff: 'hard' })).toHaveLength(1);
+    expect(hs.list({ diff: 'easy' })).toHaveLength(1);
   });
   it('survives corrupt storage', () => {
     const kv = mem();

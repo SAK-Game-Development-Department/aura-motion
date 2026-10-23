@@ -1,8 +1,10 @@
 // Battle judgement & scoring. "手応え" lives here — tweak and playtest.
 export const JUDGE = {
   /** Timing window around an enemy's opening (ms). */
-  perfectMs: 160,
-  goodMs: 380,
+  perfectMs: 200,
+  goodMs: 480,
+  /** Held-shape casts are judged this fraction of the charge time earlier (when the shape was formed). */
+  holdLeadFraction: 0.8,
   /** Window multiplier when tracking is unstable (dark room etc.). */
   unstableWindowScale: 1.5,
   /** Two-hand seals: wider timing window, and the engine's seal assist starts this early. */
@@ -10,6 +12,9 @@ export const JUDGE = {
   sealAssistLeadMs: 1600,
   scorePerfect: 300,
   scoreGood: 120,
+  /** Rank: weighted accuracy (GOOD counts this much of a PERFECT) needed for S / A / B. */
+  goodWeight: 0.75,
+  rankAt: [0.85, 0.65, 0.45] as readonly [number, number, number],
   /** Combo multiplier: 1 + floor(combo / step) * add, capped. */
   comboStep: 8,
   comboAdd: 0.1,

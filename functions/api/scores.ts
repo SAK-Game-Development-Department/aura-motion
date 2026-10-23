@@ -1,11 +1,13 @@
 // Shared ranking (Cloudflare D1).
 //   GET  /api/scores?diff=normal&period=today|all&limit=10 → { list, total }
 //   POST /api/scores  (ScoreSubmission)                    → { placeAll, placeToday, total }
-// Stored: score, breakdown, generated nickname, stage, booth id and the coarse
+// One row per (difficulty, player name): a better score overwrites the old one.
+// Stored: score, breakdown, the typed name, stage, booth id and the coarse
 // region Cloudflare already knows (prefecture). No IP address, no images, no landmarks.
 import { STAGES, type StageId } from '../../src/battle/stages';
 import { RUN_MAX_AGE_MS, RUN_MIN_AGE_MS, verifyRun } from '../../src/exhibit/runToken';
 import { checkSubmission, diffOfStage, DIFFS, jstDayStart, regionJa, type OnlineEntry, type ScoreSubmission } from '../../src/exhibit/scorePolicy';
+import { nameKey } from '../../src/exhibit/playerName';
 
 interface D1Result<T> {
   results: T[];
@@ -74,13 +76,28 @@ export const onRequestPost = async ({ request, env }: Ctx): Promise<Response> =>
   }
   const diff = diffOfStage(s.stage);
   const region = regionJa(request.cf?.region, request.cf?.country);
-  await env.DB.prepare('INSERT INTO scores (diff, stage, score, rank, name, max_combo, region, device, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(diff, s.stage, s.score, s.rank, s.name, s.maxCombo, region, s.device, now)
-    .run();
-  const above = await env.DB.prepare('SELECT COUNT(*) AS n FROM scores WHERE diff = ? AND score > ?').bind(diff, s.score).first<{ n: number }>();
-  const aboveToday = await env.DB.prepare('SELECT COUNT(*) AS n FROM scores WHERE diff = ? AND score > ? AND at >= ?').bind(diff, s.score, jstDayStart(now)).first<{ n: number }>();
+  // One row per name and difficulty: a better score overwrites, a lower one is not stored.
+  const key = nameKey(s.name);
+  const prev = await env.DB.prepare('SELECT id, score, at FROM scores WHERE diff = ? AND name_key = ?').bind(diff, key).first<{ id: number; score: number; at: number }>();
+  let updated = false;
+  if (!prev) {
+    await env.DB.prepare('INSERT INTO scores (diff, stage, score, rank, name, name_key, max_combo, region, device, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(diff, s.stage, s.score, s.rank, s.name, key, s.maxCombo, region, s.device, now)
+      .run();
+    updated = true;
+  } else if (s.score > prev.score) {
+    await env.DB.prepare('UPDATE scores SET stage = ?, score = ?, rank = ?, name = ?, max_combo = ?, region = ?, device = ?, at = ? WHERE id = ?')
+      .bind(s.stage, s.score, s.rank, s.name, s.maxCombo, region, s.device, now, prev.id)
+      .run();
+    updated = true;
+  }
+  const best = updated ? s.score : prev!.score;
+  const bestAt = updated ? now : prev!.at;
+  const today = jstDayStart(now);
+  const above = await env.DB.prepare('SELECT COUNT(*) AS n FROM scores WHERE diff = ? AND score > ?').bind(diff, best).first<{ n: number }>();
+  const aboveToday = bestAt >= today ? await env.DB.prepare('SELECT COUNT(*) AS n FROM scores WHERE diff = ? AND score > ? AND at >= ?').bind(diff, best, today).first<{ n: number }>() : null;
   const total = await env.DB.prepare('SELECT COUNT(*) AS n FROM scores WHERE diff = ?').bind(diff).first<{ n: number }>();
   // Old tokens are of no use: keep the runs table small.
   if (Math.random() < 0.05) await env.DB.prepare('DELETE FROM runs WHERE at < ?').bind(now - 2 * RUN_MAX_AGE_MS).run();
-  return json({ placeAll: (above?.n ?? 0) + 1, placeToday: (aboveToday?.n ?? 0) + 1, total: total?.n ?? 0, region });
+  return json({ placeAll: (above?.n ?? 0) + 1, placeToday: aboveToday ? aboveToday.n + 1 : null, total: total?.n ?? 0, region, updated, best });
 };

@@ -42,6 +42,24 @@ describe('seal assist (the game waits for a seal)', () => {
     expect(without).toBeLessThan(SEAL_IDS.length);
   });
 
+  it('no pose is mistaken for another (strict and with every seal awaited)', () => {
+    for (const k of SEAL_IDS) {
+      expect(new Set(run(() => sealHands(k, { x: 0.5, y: 0.6 }, 0.14))), k).toEqual(new Set([k]));
+      expect(new Set(run(() => sealHands(k, { x: 0.5, y: 0.6 }, 0.14), [k])), k).toEqual(new Set([k]));
+    }
+  });
+
+  it('poses keep the hands apart (no overlap: the tracker merges overlapping hands)', () => {
+    for (const k of SEAL_IDS) {
+      const [a, b] = sealHands(k, { x: 0.5, y: 0.6 }, 0.14).map((h) => buildHand(h));
+      const box = (lm: Array<{ x: number; y: number }>) => ({ x0: Math.min(...lm.map((p) => p.x)), x1: Math.max(...lm.map((p) => p.x)) });
+      const A = box(a!);
+      const B = box(b!);
+      const overlap = Math.max(0, Math.min(A.x1, B.x1) - Math.max(A.x0, B.x0));
+      expect(overlap / Math.min(A.x1 - A.x0, B.x1 - B.x0), k).toBeLessThan(0.25);
+    }
+  });
+
   it('a seal still forms when one hand drops out for a moment (pressed hands occlude)', () => {
     const hs = sealHands('gassho', { x: 0.5, y: 0.6 }, 0.14);
     const seals = run((t) => (t > 100 && t < 300 ? [hs[0]!] : t < 100 ? hs : hs), ['gassho'], 600);

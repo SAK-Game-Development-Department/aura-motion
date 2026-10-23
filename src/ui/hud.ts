@@ -420,8 +420,18 @@ export class Hud {
   }
 
   // ── error ──
+  /** The results layer (the name entry lives in it). */
+  get resultsLayer(): HTMLElement {
+    return this.layers.results;
+  }
+
+  /** While naming, the score moves up and the rankings wait. */
+  setNaming(on: boolean): void {
+    this.layers.results.classList.toggle('naming', on);
+  }
+
   /** Shared (nationwide) ranking on the results screen; filled in when the server answers. */
-  setOnline(o: { state: 'loading' | 'ok' | 'offline'; level: string; list?: Array<{ name: string; score: number; region: string; stageName: string }>; me?: { name: string; score: number }; place?: { placeToday: number; placeAll: number; total: number } | null }): void {
+  setOnline(o: { state: 'loading' | 'ok' | 'offline'; level: string; list?: Array<{ name: string; score: number; region: string; stageName: string }>; me?: { name: string; score: number }; place?: { placeToday: number | null; placeAll: number; total: number; updated?: boolean; best?: number } | null }): void {
     if (o.state === 'offline') {
       this.onlineEl.innerHTML = `<h3>全国ランキング</h3><p class="off">オフライン（この端末の記録のみ）</p>`;
       return;
@@ -430,8 +440,10 @@ export class Hud {
       this.onlineEl.innerHTML = `<h3>全国ランキング</h3><p class="off">送信中…</p>`;
       return;
     }
-    const mine = (e: { name: string; score: number }) => !!o.me && e.name === o.me.name && e.score === o.me.score;
-    const place = o.place ? `<p class="place">本日 <b>${o.place.placeToday}</b> 位　累計 <b>${o.place.placeAll}</b> 位 <small>/ ${o.place.total.toLocaleString('ja-JP')} 件</small></p>` : '';
+    const mine = (e: { name: string; score: number }) => !!o.me && e.name === o.me.name;
+    const p = o.place;
+    const kept = p && p.updated === false ? `<p class="off">この名前の記録 ${p.best?.toLocaleString('ja-JP')} 点の方が上なので、そのまま</p>` : '';
+    const place = p ? `<p class="place">${p.placeToday !== null ? `本日 <b>${p.placeToday}</b> 位　` : ''}累計 <b>${p.placeAll}</b> 位 <small>/ ${p.total.toLocaleString('ja-JP')} 人</small></p>${kept}` : '';
     const empty = !o.list?.length ? '<p class="off">本日の記録はまだありません</p>' : '';
     this.onlineEl.innerHTML = `<h3>全国ランキング <small>${o.level}・本日</small></h3>${place}${empty}<ol>${(o.list ?? [])
       .slice(0, 5)

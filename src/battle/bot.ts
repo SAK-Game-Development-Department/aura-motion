@@ -52,7 +52,8 @@ const REST_R: Vec2 = { x: 0.6, y: 0.72 };
 function actFor(req: Req, T: number): Act {
   switch (req.kind) {
     case "shape": {
-      const at = T - 670;
+      // Form the shape just before T (the cast completes after the charge; it is judged from the forming).
+      const at = T - 370;
       const s = perform(
         [{ at, shape: req.shape, holdMs: 700, at2: REST_R }],
         "R",
@@ -96,7 +97,7 @@ function actFor(req: Req, T: number): Act {
       return { start: at, end: at + 2500, hands: s };
     }
     case "seal": {
-      const at = T - 560;
+      const at = T - 420;
       const end = at + 900;
       const target = sealHands(req.seal, { x: 0.5, y: 0.58 }, SIZE);
       const from = [

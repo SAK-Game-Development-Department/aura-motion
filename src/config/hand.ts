@@ -13,6 +13,11 @@ export const HAND = {
   /** Card centres (view x) and half width. */
   selectCardsX: [0.2, 0.5, 0.8] as readonly number[],
   selectCardHalfW: 0.135,
+  /** Name entry: hold the fingertip over a key this long to type it; the same key again after this pause. */
+  keyDwellMs: 650,
+  keyRepeatMs: 450,
+  /** Name entry is skipped after this long without any input (ms). */
+  nameIdleMs: 25_000,
   /** Booth considered empty after no hand for this long (ms). */
   absentReturnMs: 10_000,
   /** Hold-to-select buttons: pointer = index fingertip. */

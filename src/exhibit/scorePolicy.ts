@@ -1,10 +1,10 @@
 // Shared ranking: what a score submission may contain and how it is checked.
 // Used by the browser (to build the payload) and by the Pages Function (to
-// validate it). Only the score, its breakdown, the auto-generated nickname,
+// validate it). Only the score, its breakdown, the name the player typed (checked),
 // the stage and a random booth id are ever sent — never images or landmarks.
 import { JUDGE } from '../config';
 import { STAGES, type StageId } from '../battle/stages';
-import { NICK_ADJ, NICK_NOUN } from './nickname';
+import { checkName, GUEST_NAME, normalizeName } from './playerName';
 
 export const DIFFS = ['easy', 'normal', 'hard'] as const;
 export type Diff = (typeof DIFFS)[number];
@@ -37,9 +37,9 @@ export interface OnlineEntry {
   at: number;
 }
 
-export function isNickname(name: string): boolean {
-  for (const a of NICK_ADJ) if (name.startsWith(a) && NICK_NOUN.includes(name.slice(a.length))) return true;
-  return false;
+/** A name the shared ranking accepts (typed by the player; the guest name is local only). */
+export function isValidName(name: string): boolean {
+  return checkName(name) === null && normalizeName(name) === name && name !== GUEST_NAME;
 }
 
 /** Bonus points a play can earn on top of the judged hits (ultimates, hidden boss). */
@@ -62,7 +62,7 @@ export function checkSubmission(s: Partial<ScoreSubmission>): string | null {
   if (!int(s.maxCombo, 0, s.perfect! + s.good!)) return 'combo';
   if (!int(s.score, 0, 10_000_000) || s.score! > maxPlausibleScore(s.perfect!, s.good!)) return 'score';
   if (!['S', 'A', 'B', 'C'].includes(s.rank ?? '')) return 'rank';
-  if (typeof s.name !== 'string' || !isNickname(s.name)) return 'name';
+  if (typeof s.name !== 'string' || !isValidName(s.name)) return 'name';
   if (typeof s.device !== 'string' || !/^[a-z0-9]{6,16}$/.test(s.device)) return 'device';
   if (typeof s.token !== 'string' || s.token.length > 300) return 'token';
   return null;

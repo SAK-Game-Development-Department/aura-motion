@@ -34,6 +34,8 @@ import { WorldView, type WorldTheme } from './render/world';
 import { Hud } from './ui/hud';
 import { TechLens } from './ui/techLens';
 import { SettingsPanel } from './ui/settingsPanel';
+import { NameEntry } from './ui/nameEntry';
+import { GUEST_NAME } from './exhibit/playerName';
 import { loadSettings, saveSettings, type Settings } from './exhibit/settings';
 import { battleBot } from './battle/bot';
 import { BattleSession, type BattleEvent } from './battle/session';
@@ -45,7 +47,6 @@ import { OnlineRanking } from './exhibit/online';
 import { SUBMISSION_KEYS, type Diff, type ScoreSubmission } from './exhibit/scorePolicy';
 import { BattleView, type UiRequest } from './render/battleView';
 import { hash32 } from './core/rng';
-import { nickname } from './exhibit/nickname';
 import { rankOf, multiplier } from './game/score';
 import { sealHands, type ShapeId } from './gesture/handModel';
 import type { SealKind } from './gesture/seals';
@@ -127,7 +128,10 @@ export class App {
   private playStart = 0;
   private sectionIdx = -1;
   private requireNewVisitor = false;
-  private resultsPlaced = -1;
+  /** Result waiting for the player's name. */
+  private pendingResult: { b: BattleSession; rank: string; todayBest: number } | null = null;
+  private namedAt = 0;
+  private nameEntry!: NameEntry;
   private demoBattle: { session: BattleSession; start: number } | null = null;
   private lastUi: UiRequest = { marks: [] };
   private clock = (): number => (this.rt.virtualTime ? this.vt : performance.now());
@@ -160,6 +164,7 @@ export class App {
     this.hud.setLoading(0.02, '画面を準備中…');
     this.debug = new DebugOverlay(document.body);
     this.lens = new TechLens(document.body);
+    this.nameEntry = new NameEntry(this.hud.resultsLayer, (name) => this.finishNaming(name));
     this.online = new OnlineRanking(this.rt.flags.online && this.settings.online);
     if (this.rt.debug) this.debug.toggle(true);
 
@@ -356,6 +361,11 @@ export class App {
     if (this.world && p !== 'select') this.world.theme = p === 'results' ? 'stars' : p === 'play' || p === 'calibrate' ? STAGES[this.stageId].themes.intro : 'lake';
     this.phaseAt = this.clock();
     if (p !== 'play') this.engine.expectSeals = new Set();
+    if (p !== 'results' && this.nameEntry?.visible) {
+      this.nameEntry.hide();
+      this.hud.setNaming(false);
+      this.pendingResult = null;
+    }
     this.hud.show(p === 'practice' ? 'play' : p);
     if (p !== 'play') this.hud.setMarks([]);
     if (p !== 'title') this.stopDemo();
@@ -485,37 +495,75 @@ export class App {
     const b = this.battle;
     if (!b) return;
     const sc = b.score;
-    const nick = nickname(hash32(b.stage.seed ^ sc.score));
     const def = STAGES[b.stage.stageId];
     const lv = DIFFICULTIES[def.difficulty];
-    const entry = { score: sc.score, name: nick, rank: rankOf(sc), at: Date.now(), seated: false, stage: def.id, diff: def.difficulty, stageName: def.name };
-    const todayBest = this.bestToday({ diff: def.difficulty });
-    this.resultsPlaced = this.scores.add(entry);
+    const rank = rankOf(sc);
+    this.pendingResult = { b, rank, todayBest: this.bestToday({ diff: def.difficulty }) };
     this.hud.setResults({
       score: sc.score,
-      rank: entry.rank,
+      rank,
       maxCombo: sc.maxCombo,
       counts: sc.counts,
-      nick,
-      placed: this.resultsPlaced,
-      ranking: this.scores.list({ diff: def.difficulty }),
+      nick: '',
+      placed: -1,
+      ranking: [],
       stage: `${lv.level}「${def.name}」`,
       flow: 0,
-      isBest: sc.score > todayBest && sc.score > 0,
-      extra: `<span>撃破 <b>${b.kills}</b></span>${b.ultimates - (b.hiddenCleared ? 1 : 0) > 0 ? `<span><b>${FINISH.name}</b>を決めた</span>` : `<span>${def.boss.name}を逃した</span>`}${b.hiddenCleared ? `<span>隠しボス<b>${HIDDEN_BOSS.name}</b>撃破！</span>` : ''}`,
+      isBest: false,
+      extra: this.resultExtra(b),
     });
     this.hud.setMarks([]);
     this.setPhase('results');
     this.requireNewVisitor = true;
-    void this.submitOnline(b, nick, entry.rank);
+    // The player types a name (hands-free keyboard / mouse / keyboard); then it is recorded.
+    this.hud.setNaming(true);
+    this.nameEntry.show(this.clock());
+    this.botScript();
   }
+
+  private resultExtra(b: BattleSession): string {
+    const def = STAGES[b.stage.stageId];
+    return `<span>撃破 <b>${b.kills}</b></span>${b.ultimates - (b.hiddenCleared ? 1 : 0) > 0 ? `<span><b>${FINISH.name}</b>を決めた</span>` : `<span>${def.boss.name}を逃した</span>`}${b.hiddenCleared ? `<span>隠しボス<b>${HIDDEN_BOSS.name}</b>撃破！</span>` : ''}`;
+  }
+
+  /** Name decided (or skipped → guest, kept on this device only): record and show the rankings. */
+  private finishNaming(name: string | null): void {
+    const pr = this.pendingResult;
+    this.pendingResult = null;
+    this.hud.setNaming(false);
+    this.namedAt = this.clock();
+    if (!pr) return;
+    const { b, rank, todayBest } = pr;
+    const sc = b.score;
+    const def = STAGES[b.stage.stageId];
+    const lv = DIFFICULTIES[def.difficulty];
+    const nm = name ?? GUEST_NAME;
+    const r = this.scores.add({ score: sc.score, name: nm, rank, at: Date.now(), seated: false, stage: def.id, diff: def.difficulty, stageName: def.name });
+    const kept = r.updated ? '' : `<span>この名前の最高 <b>${r.best.score.toLocaleString('ja-JP')}</b> はそのまま</span>`;
+    this.hud.setResults({
+      score: sc.score,
+      rank,
+      maxCombo: sc.maxCombo,
+      counts: sc.counts,
+      nick: nm,
+      placed: r.place,
+      ranking: this.scores.list({ diff: def.difficulty }),
+      stage: `${lv.level}「${def.name}」`,
+      flow: 0,
+      isBest: r.updated && sc.score > todayBest && sc.score > 0,
+      extra: this.resultExtra(b) + kept,
+    });
+    void this.submitOnline(b, name, rank);
+  }
+
 
   private canSubmit(): boolean {
     return this.online.enabled && (this.source instanceof CameraSource || this.rt.onlineTest);
   }
 
   /** Submit the play to the shared ranking and show where it placed (never blocks the results). */
-  private async submitOnline(b: BattleSession, nick: string, rank: string): Promise<void> {
+  /** `name` null = guest: nothing is sent, the shared board is only shown. */
+  private async submitOnline(b: BattleSession, name: string | null, rank: string): Promise<void> {
     const def = STAGES[b.stage.stageId];
     const lv = DIFFICULTIES[def.difficulty].level;
     const diff = def.difficulty as Diff;
@@ -524,9 +572,9 @@ export class App {
     this.runToken = null;
     const id = this.playId;
     let place = null;
-    if (token && this.canSubmit()) {
+    if (token && name && this.canSubmit()) {
       this.hud.setOnline({ state: 'loading', level: lv });
-      const sub: ScoreSubmission = { token, stage: def.id, score: sc.score, rank, name: nick, maxCombo: sc.maxCombo, perfect: sc.counts.perfect, good: sc.counts.good, miss: sc.counts.miss, device: OnlineRanking.deviceId() };
+      const sub: ScoreSubmission = { token, stage: def.id, score: sc.score, rank, name, maxCombo: sc.maxCombo, perfect: sc.counts.perfect, good: sc.counts.good, miss: sc.counts.miss, device: OnlineRanking.deviceId() };
       // Only the fields in SUBMISSION_KEYS leave the device.
       const clean = Object.fromEntries(SUBMISSION_KEYS.map((k) => [k, sub[k]])) as unknown as ScoreSubmission;
       place = await this.online.submit(clean);
@@ -534,7 +582,7 @@ export class App {
     const board = await this.online.refresh(diff, 'today', place ? 0 : 30_000);
     if (id !== this.playId || this.phase !== 'results') return;
     if (!board) this.hud.setOnline({ state: 'offline', level: lv });
-    else this.hud.setOnline({ state: 'ok', level: lv, list: board.list, me: { name: nick, score: sc.score }, place });
+    else this.hud.setOnline({ state: 'ok', level: lv, list: board.list, me: name ? { name, score: sc.score } : undefined, place });
   }
 
   private startPractice(): void {
@@ -694,7 +742,14 @@ export class App {
       }
       case 'results': {
         this.presence.update(now, present, present ? 'ok' : 'none');
-        if (now - this.phaseAt > this.rt.resultsMs) this.setPhase('title');
+        if (this.nameEntry.visible) {
+          // Hands-free typing: the index fingertip is the pointer.
+          const h = g?.hands[0];
+          this.nameEntry.pointer(h ? this.gfx.layout.viewToScreen(this.world.predictor.predict(h, now).tip) : null, now);
+          const idle = now - Math.max(this.phaseAt, this.nameEntry.lastActivity);
+          // Skip when the player left (and nobody is typing) or after a long idle.
+          if ((this.presence.absentFor(now) > 3000 && idle > 3000) || idle > this.rt.nameIdleMs) this.nameEntry.skip();
+        } else if (now - this.namedAt > this.rt.resultsMs) this.setPhase('title');
         break;
       }
       case 'practice': {
@@ -751,7 +806,7 @@ export class App {
       this.breakdown['track.seg'] = st.segMs;
       this.breakdown['track.fld'] = st.fieldMs;
     }
-    this.lens.setVisible(this.lensMode === 'on' || (this.lensMode === 'auto' && (this.phase === 'title' || this.phase === 'results')));
+    this.lens.setVisible(!this.nameEntry.visible && (this.lensMode === 'on' || (this.lensMode === 'auto' && (this.phase === 'title' || this.phase === 'results'))));
     if (this.lens.visible) {
       const cam = this.source instanceof CameraSource ? this.source : null;
       const L = this.gfx.layout;

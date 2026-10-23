@@ -241,14 +241,15 @@ export function sealHands(kind: 'gassho' | 'kensho' | 'soshi' | 'kanmon' | 'kosa
   const dx = (v: number) => (v * size) / aspect;
   switch (kind) {
     case 'gassho': {
-      // Palms together: two open hands side by side, fingers up, nearly touching.
-      const l = { ...withShape(L0, 'open'), spread: 1.0, yaw: 60, wrist: { x: centre.x - dx(0.12), y: centre.y + size * 0.6 } };
-      const r = { ...withShape(R0, 'open'), spread: 1.0, yaw: 60, wrist: { x: centre.x + dx(0.12), y: centre.y + size * 0.6 } };
+      // Two open hands facing the camera side by side, thumb tips touching.
+      const l = placeLandmark({ ...withShape(L0, 'open'), rot: 8 }, 4, { x: centre.x - dx(0.08), y: centre.y + size * 0.35 });
+      const r = placeLandmark({ ...withShape(R0, 'open'), rot: -8 }, 4, { x: centre.x + dx(0.08), y: centre.y + size * 0.35 });
       return [l, r];
     }
     case 'kensho': {
-      const f = { ...withShape(L0, 'fist'), rot: 20, wrist: { x: centre.x - dx(0.55), y: centre.y + size * 0.4 } };
-      const o = { ...withShape(R0, 'open'), rot: -25, wrist: { x: centre.x + dx(0.35), y: centre.y + size * 0.55 } };
+      // A fist next to the open hand (not pressed into it).
+      const f = { ...withShape(L0, 'fist'), rot: 10, wrist: { x: centre.x - dx(0.85), y: centre.y + size * 0.5 } };
+      const o = { ...withShape(R0, 'open'), rot: -10, wrist: { x: centre.x + dx(0.75), y: centre.y + size * 0.6 } };
       return [f, o];
     }
     case 'soshi': {
@@ -262,8 +263,9 @@ export function sealHands(kind: 'gassho' | 'kensho' | 'soshi' | 'kanmon' | 'kosa
       return [l, r];
     }
     case 'kosa': {
-      const l = { ...withShape(L0, 'two'), rot: 35, wrist: { x: centre.x - dx(0.7), y: centre.y + size * 0.7 } };
-      const r = { ...withShape(R0, 'two'), rot: -35, wrist: { x: centre.x + dx(0.7), y: centre.y + size * 0.7 } };
+      // Both V hands tilted inward, index tips touching (no crossing).
+      const l = placeLandmark({ ...withShape(L0, 'two'), rot: 40 }, 8, { x: centre.x - dx(0.08), y: centre.y - size * 0.35 });
+      const r = placeLandmark({ ...withShape(R0, 'two'), rot: -40 }, 8, { x: centre.x + dx(0.08), y: centre.y - size * 0.35 });
       return [l, r];
     }
   }

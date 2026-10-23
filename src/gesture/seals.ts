@@ -33,11 +33,13 @@ interface SealDef {
 }
 
 const DEFS: Record<SealKind, SealDef> = {
-  gassho: { shapes: ['open', 'open'], loose: [['open', 'two', 'point', 'thumb', 'horn'], ['open', 'two', 'point', 'thumb', 'horn']], maxPalm: 1.5 },
-  kensho: { shapes: ['fist', 'open'], loose: [['fist', 'thumb', 'pinch'], ['open', 'two', 'thumb', 'ell']], maxPalm: 1.4 },
+  // No pose overlaps the hands (the tracker loses or merges overlapping hands):
+  // the hands face the camera side by side and touch only at the fingertips.
+  gassho: { shapes: ['open', 'open'], loose: [['open', 'two', 'thumb', 'horn', 'ell'], ['open', 'two', 'thumb', 'horn', 'ell']], touch: [HL.thumbTip, HL.thumbTip, 0.9] },
+  kensho: { shapes: ['fist', 'open'], loose: [['fist', 'thumb', 'pinch'], ['open', 'two', 'thumb', 'ell']], maxPalm: 2.2 },
   soshi: { shapes: ['point', 'point'], loose: [['point', 'two', 'ell', 'horn'], ['point', 'two', 'ell', 'horn']], touch: [HL.indexTip, HL.indexTip, 0.7] },
   kanmon: { shapes: ['ell', 'ell'], loose: [['ell', 'point', 'open', 'pinch', 'two'], ['ell', 'point', 'open', 'pinch', 'two']], touch: [HL.thumbTip, HL.thumbTip, 0.8] },
-  kosa: { shapes: ['two', 'two'], loose: [['two', 'point', 'horn', 'open'], ['two', 'point', 'horn', 'open']], maxPalm: 1.9 },
+  kosa: { shapes: ['two', 'two'], loose: [['two', 'horn', 'open'], ['two', 'horn', 'open']], touch: [HL.indexTip, HL.indexTip, 0.9] },
 };
 
 export interface SealHand {

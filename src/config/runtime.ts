@@ -35,6 +35,8 @@ export interface Runtime {
   resultsMs: number;
   attractDelayMs: number;
   startHoldMs: number;
+  /** Name entry is skipped after this long without input. */
+  nameIdleMs: number;
   /** Holding the hand over a stage card this long selects it. */
   selectHoldMs: number;
   calibPulses: number;
@@ -71,6 +73,7 @@ export function readRuntime(search: string): Runtime {
     attractDelayMs: fast ? 1500 : 3000,
     startHoldMs: fast ? 800 : HAND.startHoldMs,
     selectHoldMs: fast ? 700 : HAND.selectHoldMs,
+    nameIdleMs: fast ? 2500 : HAND.nameIdleMs,
     calibPulses: fast ? 3 : LATENCY.calibPulses,
     calibIntervalMs: LATENCY.calibIntervalMs,
   };

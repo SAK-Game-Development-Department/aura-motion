@@ -45,11 +45,12 @@ export function applyGrade(s: ScoreState, g: Grade, weight = 1): number {
 export function accuracy(s: ScoreState): number {
   const n = s.counts.perfect + s.counts.good + s.counts.miss;
   if (n === 0) return 0;
-  return (s.counts.perfect + s.counts.good * 0.5) / n;
+  return (s.counts.perfect + s.counts.good * JUDGE.goodWeight) / n;
 }
 
 export type Rank = "S" | "A" | "B" | "C";
 export function rankOf(s: ScoreState): Rank {
   const a = accuracy(s);
-  return a >= 0.9 ? "S" : a >= 0.75 ? "A" : a >= 0.5 ? "B" : "C";
+  const [sMin, aMin, bMin] = JUDGE.rankAt;
+  return a >= sMin ? "S" : a >= aMin ? "A" : a >= bMin ? "B" : "C";
 }
