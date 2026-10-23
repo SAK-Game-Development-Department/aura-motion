@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS scores (
   diff TEXT NOT NULL,          -- easy | normal | hard
   stage TEXT NOT NULL,         -- stage id (yoi, hoshi, …)
   score INTEGER NOT NULL,
-  rank TEXT NOT NULL,          -- S / A / B / C
+  rank TEXT NOT NULL,          -- S / A / B / C / D
   name TEXT NOT NULL,          -- generated nickname (from fixed word lists)
   max_combo INTEGER NOT NULL,
   region TEXT,                 -- coarse place of the booth (Cloudflare region, e.g. Tokyo)

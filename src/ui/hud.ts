@@ -402,7 +402,7 @@ export class Hud {
 
   // ── results ──
   setResults(r: { score: number; rank: string; maxCombo: number; counts: Record<Grade, number>; nick: string; placed: number; ranking: ScoreEntry[]; flow: number; isBest: boolean; qrSvg?: string | null; extra?: string; stage?: string }): void {
-    const rankClass = r.rank === 'S' ? 'glow-a' : r.rank === 'A' ? 'glow-c' : 'glow-m';
+    const rankClass = r.rank === 'S' ? 'glow-a' : r.rank === 'A' ? 'glow-c' : r.rank === 'D' ? 'rank-d' : 'glow-m';
     this.resEl.innerHTML = `
       ${r.stage ? `<div class="stage-name">${r.stage}</div>` : ''}
       <div class="rank ${rankClass}">${r.rank}</div>

@@ -61,7 +61,7 @@ export function checkSubmission(s: Partial<ScoreSubmission>): string | null {
   if (s.perfect! + s.good! + s.miss! > 400) return 'counts';
   if (!int(s.maxCombo, 0, s.perfect! + s.good!)) return 'combo';
   if (!int(s.score, 0, 10_000_000) || s.score! > maxPlausibleScore(s.perfect!, s.good!)) return 'score';
-  if (!['S', 'A', 'B', 'C'].includes(s.rank ?? '')) return 'rank';
+  if (!['S', 'A', 'B', 'C', 'D'].includes(s.rank ?? '')) return 'rank';
   if (typeof s.name !== 'string' || !isValidName(s.name)) return 'name';
   if (typeof s.device !== 'string' || !/^[a-z0-9]{6,16}$/.test(s.device)) return 'device';
   if (typeof s.token !== 'string' || s.token.length > 300) return 'token';

@@ -5,7 +5,7 @@ import { battleBot } from '../../src/battle/bot';
 import { GestureEngine } from '../../src/gesture/engine';
 import { buildHand } from '../../src/gesture/handModel';
 import { DEFAULT_FLAGS } from '../../src/config/flags';
-import { accuracy, rankOf } from '../../src/game/score';
+import { accuracy, newScore, rankOf } from '../../src/game/score';
 
 // A person forms the shape when the timing ring closes — later than the bot,
 // which starts early on purpose. The cast completes after the charge, but the
@@ -49,4 +49,20 @@ describe('human timing', () => {
       expect(['S', 'A', 'B'], stage).toContain(rankOf(session.score));
     }
   }, 60_000);
+});
+
+describe('rank', () => {
+  it('S, A, B, C, D by weighted accuracy (the same for every stage)', () => {
+    const at = (perfect: number, good: number, miss: number) => {
+      const s = newScore();
+      s.counts = { perfect, good, miss };
+      return rankOf(s);
+    };
+    expect(at(10, 0, 0)).toBe('S');
+    expect(at(5, 3, 2)).toBe('A'); // (5 + 2.25) / 10
+    expect(at(5, 2, 3)).toBe('B'); // (5 + 1.5) / 10
+    expect(at(3, 2, 5)).toBe('C'); // (3 + 1.5) / 10
+    expect(at(2, 1, 7)).toBe('D'); // (2 + 0.75) / 10
+    expect(at(0, 0, 0)).toBe('D');
+  });
 });

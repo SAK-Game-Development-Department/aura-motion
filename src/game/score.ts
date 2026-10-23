@@ -48,9 +48,9 @@ export function accuracy(s: ScoreState): number {
   return (s.counts.perfect + s.counts.good * JUDGE.goodWeight) / n;
 }
 
-export type Rank = "S" | "A" | "B" | "C";
+export type Rank = "S" | "A" | "B" | "C" | "D";
 export function rankOf(s: ScoreState): Rank {
   const a = accuracy(s);
-  const [sMin, aMin, bMin] = JUDGE.rankAt;
-  return a >= sMin ? "S" : a >= aMin ? "A" : a >= bMin ? "B" : "C";
+  const [sMin, aMin, bMin, cMin] = JUDGE.rankAt;
+  return a >= sMin ? "S" : a >= aMin ? "A" : a >= bMin ? "B" : a >= cMin ? "C" : "D";
 }

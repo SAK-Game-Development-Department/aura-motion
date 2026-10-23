@@ -79,6 +79,7 @@ body.cursor { cursor: crosshair; }
 .res { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -54%); text-align: center; padding: 4vh 8vh; border-radius: 50%;
   background: radial-gradient(ellipse at center, rgba(2,2,8,.82) 0%, rgba(2,2,8,.6) 55%, rgba(2,2,8,0) 75%); }
 .res .rank { font-size: 22vh; line-height: 1; font-weight: 700; }
+.res .rank.rank-d { color: var(--dim); }
 .res .big { font-size: 10vh; font-weight: 600; font-variant-numeric: tabular-nums; }
 .res .row { display: flex; gap: 4vh; justify-content: center; font-size: 3.2vh; margin-top: 1.5vh; color: var(--dim); }
 .res .row b { color: var(--white); font-variant-numeric: tabular-nums; }
