@@ -28,4 +28,25 @@ describe('human timing', () => {
       expect(['S', 'A'], stage).toContain(rankOf(session.score));
     }
   }, 60_000);
+
+  it('a late player behind a laggy camera still clears B (steps stay open for the charge and the lag)', () => {
+    for (const stage of ['yoi', 'hoshi', 'gesshoku'] as const) {
+      const st = generateValidBattle({ seed: 4, flags: DEFAULT_FLAGS, oneHand: false, coreOnly: false, structure: true, twoHandOk: true, stage });
+      const engine = new GestureEngine({ seals: true, twoHand: true });
+      const session = new BattleSession({ stage: st, dda: false, oneHand: false, twoHandOk: true });
+      // 150 ms later than at the ring, seen through a camera 150 ms behind.
+      const bot = battleBot(st, { playStart: 0, session, offsetMs: 450 });
+      const lagMs = 150;
+      const seen: Array<{ t: number; hands: ReturnType<typeof bot> }> = [];
+      for (let t = 0; t <= st.durationMs + 1500; t += 1000 / 30) {
+        session.update(t);
+        engine.expectSeals = session.expectedSeals(t);
+        seen.push({ t, hands: bot(t) });
+        while (seen.length > 1 && seen[0]!.t < t - lagMs) seen.shift();
+        const g = engine.update({ t, poses: [], aspect: 16 / 9, hands: seen[0]!.hands.map((h) => ({ lm: buildHand(h), score: 0.97 })) });
+        for (const e of g.events) session.pushEvent(t, e);
+      }
+      expect(['S', 'A', 'B'], stage).toContain(rankOf(session.score));
+    }
+  }, 60_000);
 });

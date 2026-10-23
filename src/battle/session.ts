@@ -314,7 +314,7 @@ export class BattleSession {
         }
         continue;
       }
-      if (now <= step.t + JUDGE.goodMs * ws * this.stepScale(step.tech) + 120) continue;
+      if (now <= step.t + JUDGE.goodMs * ws * this.stepScale(step.tech) + JUDGE.lateGraceMs) continue;
       const tech = TECH[step.tech]!;
       this.events.push({ type: 'miss', t: now, enemy: a.e.id, tech });
       a.lastMissT = now;

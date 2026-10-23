@@ -2,7 +2,19 @@
 export const JUDGE = {
   /** Timing window around an enemy's opening (ms). */
   perfectMs: 200,
-  goodMs: 480,
+  /**
+   * How late a move still counts (GOOD). Early moves already count up to
+   * EARLY_MS; people react to the ring, so they are late far more often than
+   * early, and the camera adds its own lag on top.
+   */
+  goodMs: 720,
+  /**
+   * How long a step stays open after its window closes. A held shape only
+   * casts after the charge and the camera adds its own lag, so the cast that
+   * proves the player was on time arrives well after the window — expiring at
+   * the window's edge turned those into misses (real plays: almost all rank C).
+   */
+  lateGraceMs: 750,
   /** Held-shape casts are judged this fraction of the charge time earlier (when the shape was formed). */
   holdLeadFraction: 0.8,
   /** Window multiplier when tracking is unstable (dark room etc.). */
