@@ -44,24 +44,51 @@ test('zero external requests and no uploads during a full camera boot + play', a
   expect(nonGet).toEqual([]);
 });
 
-test('no audio APIs are used', async ({ page }) => {
+// Sound is synthesized live (Web Audio): one AudioContext, no <audio>, no
+// audio files fetched, never the microphone — and none at all when the staff
+// switch sound off.
+async function countAudio(page: import('@playwright/test').Page) {
   await page.addInitScript(() => {
     const w = window as unknown as Record<string, unknown>;
-    w.__audio = 0;
-    const AC = w.AudioContext as (new () => unknown) | undefined;
+    w.__ac = 0;
+    w.__audioEl = 0;
+    const AC = w.AudioContext as (new (o?: unknown) => unknown) | undefined;
     if (AC) {
-      w.AudioContext = function () {
-        (w.__audio as number)++;
-        return new AC();
-      };
+      const Wrapped = function (this: unknown, o?: unknown) {
+        (w.__ac as number)++;
+        return new AC(o);
+      } as unknown as typeof AudioContext;
+      w.AudioContext = Wrapped;
     }
     const play = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
-      if (this instanceof HTMLAudioElement) (w.__audio as number)++;
+      if (this instanceof HTMLAudioElement) (w.__audioEl as number)++;
       return play.call(this);
     };
   });
+}
+
+test('sound: synthesized only (one AudioContext, no audio files, no <audio>)', async ({ page }) => {
+  const audioFiles: string[] = [];
+  page.on('request', (r) => /\.(mp3|wav|ogg|m4a|aac|flac|webm)(\?|$)/i.test(r.url()) && audioFiles.push(r.url()));
+  await countAudio(page);
   await page.goto(`/${FAST}`);
   await waitFor(page, (s) => s.phase === 'play', 60_000);
-  expect(await page.evaluate(() => (window as unknown as { __audio: number }).__audio)).toBe(0);
+  await page.keyboard.press('Shift'); // a user gesture unlocks audio
+  await page.waitForTimeout(1500);
+  const r = await page.evaluate(() => ({ ac: (window as unknown as { __ac: number }).__ac, el: (window as unknown as { __audioEl: number }).__audioEl, tags: document.querySelectorAll('audio').length }));
+  expect(r.ac).toBeLessThanOrEqual(1);
+  expect(r.el).toBe(0);
+  expect(r.tags).toBe(0);
+  expect(audioFiles).toEqual([]);
+});
+
+test('sound off in the settings → no audio at all', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('aura.settings.v1', JSON.stringify({ sound: false })));
+  await countAudio(page);
+  await page.goto(`/${FAST}`);
+  await waitFor(page, (s) => s.phase === 'play', 60_000);
+  await page.keyboard.press('Shift');
+  await page.waitForTimeout(800);
+  expect(await page.evaluate(() => (window as unknown as { __ac: number }).__ac)).toBe(0);
 });

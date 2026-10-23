@@ -141,7 +141,11 @@ export class NameEntry {
     });
   }
 
+  /** Called on every key press (sound). */
+  onKey: ((k: string) => void) | null = null;
+
   private press(k: string): void {
+    this.onKey?.(k);
     this.lastActivity = performance.now();
     let v = this.input.value;
     if (k === '決定') return this.submit();

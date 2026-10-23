@@ -7,7 +7,7 @@
 //
 // Handles camera errors (→ mouse emergency mode), tracking stalls (→ restart),
 // exceptions (→ soft reset), empty booth (→ title) and a stalled loop (→ reload).
-import { EXHIBIT, GESTURE, HAND, JUDGE, LATENCY, RENDER, SAFETY, SETTINGS, TRACKING } from './config';
+import { EXHIBIT, GESTURE, HAND, JUDGE, LATENCY, RENDER, SAFETY, SETTINGS, SOUND, TRACKING } from './config';
 import type { Runtime } from './config/runtime';
 import { Ring } from './core/math';
 import type { FieldFrame, PoseFrame } from './core/types';
@@ -35,6 +35,7 @@ import { Hud } from './ui/hud';
 import { TechLens } from './ui/techLens';
 import { SettingsPanel } from './ui/settingsPanel';
 import { NameEntry } from './ui/nameEntry';
+import { Sound } from './audio/sound';
 import { GUEST_NAME } from './exhibit/playerName';
 import { loadSettings, saveSettings, type Settings } from './exhibit/settings';
 import { battleBot } from './battle/bot';
@@ -132,6 +133,8 @@ export class App {
   private pendingResult: { b: BattleSession; rank: string; todayBest: number } | null = null;
   private namedAt = 0;
   private nameEntry!: NameEntry;
+  private sound!: Sound;
+  private lastSelHover: number | null = null;
   private demoBattle: { session: BattleSession; start: number } | null = null;
   private lastUi: UiRequest = { marks: [] };
   private clock = (): number => (this.rt.virtualTime ? this.vt : performance.now());
@@ -165,6 +168,13 @@ export class App {
     this.debug = new DebugOverlay(document.body);
     this.lens = new TechLens(document.body);
     this.nameEntry = new NameEntry(this.hud.resultsLayer, (name) => this.finishNaming(name));
+    this.nameEntry.onKey = (k) => this.sound.play(k === '決定' ? 'confirm' : 'key');
+    this.sound = new Sound({ enabled: this.settings.sound, sfx: this.settings.sfxVolume, ambient: this.settings.ambientVolume });
+    // Browsers start audio only after a user gesture: any key / click unlocks it (staff press F for fullscreen anyway).
+    const unlock = () => this.sound.unlock();
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    this.sound.unlock();
     this.online = new OnlineRanking(this.rt.flags.online && this.settings.online);
     if (this.rt.debug) this.debug.toggle(true);
 
@@ -174,6 +184,7 @@ export class App {
     this.world = new WorldView(this.gfx, maxParticles, TRACKING.fieldW, TRACKING.fieldH);
     this.world.fxEnabled = this.rt.flags.fx;
     this.battleView = new BattleView(this.gfx, this.world);
+    this.battleView.onSpawn = (big) => this.sound.play('spawn', { gain: 0.6 + big * 0.4 });
     this.settingsPanel = new SettingsPanel(document.body, () => this.settings, (s) => {
       this.settings = s;
       saveSettings(s);
@@ -345,6 +356,10 @@ export class App {
     this.world.particles?.setCount(this.particleCount());
     this.lensMode = s.techLens;
     if (this.online) this.online.enabled = this.rt.flags.online && s.online;
+    if (this.sound) {
+      if (this.sound.enabled !== s.sound) this.sound.setEnabled(s.sound);
+      this.sound.setVolumes(s.sfxVolume, s.ambientVolume);
+    }
   }
 
   private particleCount(): number {
@@ -394,6 +409,7 @@ export class App {
   }
 
   private openDifficultyStep(now: number): void {
+    this.lastSelHover = null;
     this.selectStep = 'difficulty';
     this.selector = new StageSelector(now, this.rt.selectHoldMs);
     this.hud.setSelect(
@@ -407,6 +423,7 @@ export class App {
   }
 
   private openStageStep(now: number, diff: DifficultyId): void {
+    this.lastSelHover = null;
     this.selectStep = 'stage';
     this.selectDiff = diff;
     // Shorter grace: the hand is already up from the first step.
@@ -518,6 +535,7 @@ export class App {
     // The player types a name (hands-free keyboard / mouse / keyboard); then it is recorded.
     this.hud.setNaming(true);
     this.nameEntry.show(this.clock());
+    this.sound.play('results');
     this.botScript();
   }
 
@@ -689,6 +707,11 @@ export class App {
           return { l: L.viewToScreen({ x: cx - HAND.selectCardHalfW, y: 0.5 }).x, r: L.viewToScreen({ x: cx + HAND.selectCardHalfW, y: 0.5 }).x };
         });
         this.hud.updateSelect(rects, st.hover, st.progress, hand ? L.viewToScreen(hand.palm) : null);
+        if (st.hover !== this.lastSelHover) {
+          this.lastSelHover = st.hover;
+          if (st.hover !== null) this.sound.play('select');
+        }
+        if (st.chosen !== null) this.sound.play('confirm');
         const opts = this.selectOptions();
         if (st.hover !== null) this.world.theme = opts ? opts[st.hover]!.themes.intro : stagesOf(DIFFICULTY_IDS[st.hover]!)[0]!.themes.intro;
         if (st.chosen !== null) {
@@ -806,6 +829,8 @@ export class App {
       this.breakdown['track.seg'] = st.segMs;
       this.breakdown['track.fld'] = st.fieldMs;
     }
+    this.sound.setTheme(this.world.theme);
+    this.sound.setDuck(this.phase === 'title' && this.demo ? SOUND.attractDuck : 1);
     this.lens.setVisible(!this.nameEntry.visible && (this.lensMode === 'on' || (this.lensMode === 'auto' && (this.phase === 'title' || this.phase === 'results'))));
     if (this.lens.visible) {
       const cam = this.source instanceof CameraSource ? this.source : null;
@@ -828,10 +853,34 @@ export class App {
     }
   }
 
+  /** Sound for battle events (the picture is drawn by BattleView). */
+  private playBattleSounds(bev: BattleEvent[], ui: UiRequest): void {
+    const S = this.sound;
+    for (const e of bev) {
+      if (e.type === 'cast') {
+        if (e.ev.type === 'seal') S.play('seal');
+        else S.play('cast', { pitch: e.matched ? 1 : 0.8, gain: e.matched ? 1 : 0.6 });
+      } else if (e.type === 'hit') {
+        if (e.kill) S.play('kill', { pitch: e.boss ? 0.7 : 1 });
+        else if (e.boss) S.play('bossHit');
+        else S.play(e.grade === 'perfect' ? 'hitPerfect' : 'hitGood');
+        if (e.kill && e.grade === 'perfect') S.play('hitPerfect', { gain: 0.6 });
+      } else if (e.type === 'miss') S.play('miss');
+      else if (e.type === 'hurt') S.play('hurt');
+      else if (e.type === 'blocked') S.play('block');
+      else if (e.type === 'ultimate') S.play('finish', { pitch: e.hidden ? 1.26 : 1 });
+      else if (e.type === 'hiddenBoss') S.play('hiddenBoss');
+      else if (e.type === 'section') S.play('section', { pitch: e.kind === 'boss' ? 0.75 : 1 });
+    }
+    if (ui.cutin?.big) S.play('cutin');
+    if (ui.combo) S.play('combo', { pitch: 1 + Math.min(0.5, ui.combo / 60) });
+  }
+
   private handleBattleEvents(bev: BattleEvent[], now: number, gt: number, g: GestureFrame | null): void {
     const b = this.battle!;
     const ui = this.battleView.onEvents(bev, now, gt, b, g);
     this.lastUi = ui;
+    this.playBattleSounds(bev, ui);
     if (ui.cutin) this.hud.cutin(ui.cutin.title, ui.cutin.reading, ui.cutin.hue, ui.cutin.big);
     if (ui.hurt) this.hud.hurt();
     if (ui.combo) this.hud.announce(`${ui.combo} 連撃！`);
@@ -951,7 +1000,7 @@ export class App {
           const gt = f.t - db.start;
           const bev = db.session.update(gt);
           for (const e of bev) if (e.type === 'section') this.world.theme = STAGES[db.session.stage.stageId].themes[e.kind] as WorldTheme;
-          this.battleView.onEvents(bev, f.t, gt, db.session, gf);
+          this.playBattleSounds(bev, this.battleView.onEvents(bev, f.t, gt, db.session, gf));
         } else this.world.onGestureEvents(gf.events, gf, now);
         if (this.world.particles) {
           const lms = gf.hands.map((h) => h.lm);

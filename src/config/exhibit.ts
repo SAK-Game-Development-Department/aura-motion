@@ -63,12 +63,18 @@ export const SETTINGS = {
     sealAssist: true,
     /** Send camera plays to the shared ranking. */
     online: true,
+    /** Sound effects and ambience (synthesized). */
+    sound: true,
+    sfxVolume: 0.7,
+    ambientVolume: 0.5,
   },
   ranges: {
     brightness: [0.4, 1.3],
     glow: [0, 1.6],
     background: [0, 1.5],
     effects: [0, 1],
+    sfxVolume: [0, 1],
+    ambientVolume: [0, 1],
   },
   /** Particle presets → RENDER.particleLevels index. */
   particleLevel: { low: 0, mid: 2, high: 4 },

@@ -57,6 +57,8 @@ export class BattleView {
   private domainT0 = 0;
   private dimUntil = 0;
   private sealIcons = new Map<string, Array<Array<{ x: number; y: number }>>>();
+  /** Called when a spirit appears (sound). */
+  onSpawn: ((big: number) => void) | null = null;
   /** Visual time scale (slow motion during cinematics). */
   timeScale = 1;
 
@@ -212,6 +214,7 @@ export class BattleView {
         this.seen.add(a.e.id);
         const big = a.e.kind === 'lord' || a.e.kind === 'eclipse' ? 1.4 : a.e.kind === 'breaker' ? 0.9 : 0.5;
         this.fx.push({ kind: 'rift', t0: now, dur: 900, from: p.at, to: p.at, rgb: rim, seed: a.e.id, big });
+        this.onSpawn?.(big);
       }
       if (p.alpha <= 0.01) continue;
       const w = L.viewToWorld(p.at);

@@ -13,6 +13,9 @@ export type Settings = {
   techLens: 'auto' | 'on' | 'off';
   sealAssist: boolean;
   online: boolean;
+  sound: boolean;
+  sfxVolume: number;
+  ambientVolume: number;
 };
 
 const KEY = 'aura.settings.v1';
@@ -40,6 +43,9 @@ export function sanitize(raw: unknown): Settings {
     techLens: oneOf(r.techLens, ['auto', 'on', 'off'] as const, d.techLens),
     sealAssist: bool(r.sealAssist, d.sealAssist),
     online: bool(r.online, d.online),
+    sound: bool(r.sound, d.sound),
+    sfxVolume: clamp(r.sfxVolume, R.sfxVolume, d.sfxVolume),
+    ambientVolume: clamp(r.ambientVolume, R.ambientVolume, d.ambientVolume),
   };
 }
 

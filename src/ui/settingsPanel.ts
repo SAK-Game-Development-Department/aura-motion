@@ -3,21 +3,24 @@
 import { SETTINGS } from '../config';
 import { defaultSettings, type Settings } from '../exhibit/settings';
 
-type Num = 'brightness' | 'glow' | 'background' | 'effects';
+type Num = 'brightness' | 'glow' | 'background' | 'effects' | 'sfxVolume' | 'ambientVolume';
 type Choice = 'particles' | 'techLens';
-type Flag = 'lens' | 'sealAssist' | 'online';
+type Flag = 'lens' | 'sealAssist' | 'online' | 'sound';
 
 const NUMS: Array<{ k: Num; label: string; hint: string }> = [
   { k: 'brightness', label: '明るさ', hint: '画面全体。眩しいときは下げる' },
   { k: 'glow', label: '光のにじみ', hint: '光がぼやけて広がる強さ（ブルーム）' },
   { k: 'background', label: '背景の明るさ', hint: '背景の模様・色の強さ' },
   { k: 'effects', label: '演出の強さ', hint: 'フラッシュ・揺れ・ズーム・色ずれ' },
+  { k: 'sfxVolume', label: '効果音の音量', hint: '技・命中・撃破・ボスなど' },
+  { k: 'ambientVolume', label: '環境音の音量', hint: 'ステージごとの静かな背景の音' },
 ];
 const CHOICES: Array<{ k: Choice; label: string; opts: Array<[string, string]> }> = [
   { k: 'particles', label: '粒子の数', opts: [['auto', '自動'], ['low', '少なめ'], ['mid', 'ふつう'], ['high', '多め']] },
   { k: 'techLens', label: 'テックレンズ', opts: [['auto', '自動'], ['on', '常に表示'], ['off', '表示しない']] },
 ];
 const FLAGS: Array<{ k: Flag; label: string; hint: string }> = [
+  { k: 'sound', label: '音を出す', hint: 'ブラウザの制限で、最初にクリックかキーを押すまで鳴らないことがある' },
   { k: 'lens', label: '色ずれ（レンズ効果）', hint: '大技で画面の端の色がずれる' },
   { k: 'sealAssist', label: '両手ポーズのアシスト', hint: '求められている両手ポーズを決めやすくする' },
   { k: 'online', label: '全国ランキングに送る', hint: 'スコアと自動ニックネームだけを送信' },
