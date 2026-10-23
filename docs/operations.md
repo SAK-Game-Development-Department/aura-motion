@@ -53,11 +53,11 @@
 - 光の点滅が苦手な方: K キーで控えめモードにする
 
 ## 4.5 全国ランキング（Cloudflare D1）
-- 会場のネットにつながっていれば、カメラで遊んだ結果が全国ランキングに送られる（スコアと自動ニックネームだけ）。つながっていなくてもゲームは普通に動く（リザルトに「オフライン」）
+- 会場のネットにつながっていれば、カメラで遊んで名前を入れた結果が全国ランキングに送られる（スコアと入れた名前だけ。名前を入れなければ送らない）。つながっていなくてもゲームは普通に動く（リザルトに「オフライン」）
 - 止めたいとき: URL に `?flags=-online`
 - 初回の準備（済み）: `npx wrangler d1 migrations apply aura-scores --remote`、署名の秘密 `npx wrangler pages secret put RUN_SECRET --project-name aura-motion`
 - 中身を見る: `npx wrangler d1 execute aura-scores --remote --command "SELECT diff, name, score, region, datetime(at/1000,'unixepoch','+9 hours') FROM scores ORDER BY at DESC LIMIT 20"`
-- テストの記録などを消す: `npx wrangler d1 execute aura-scores --remote --command "DELETE FROM scores WHERE id = <id>"`
+- 不適切な名前・テストの記録を消す: `npx wrangler d1 execute aura-scores --remote --command "DELETE FROM scores WHERE id = <id>"`
 
 ## 5. トラブル時の復旧
 | 症状 | まずやること | それでもだめなら |
@@ -76,7 +76,7 @@
 
 ## 6. 終了時
 - ブラウザを閉じるだけでよい。映像は保存していないので、消すデータはない
-- ハイスコア（スコアと自動のニックネームだけ）はブラウザの localStorage に残る。消したいときはブラウザの「サイトデータの削除」で消す
+- ハイスコア（スコアと入れた名前だけ）はブラウザの localStorage に残る。消したいときはブラウザの「サイトデータの削除」で消す
 
 ## 7. 機能フラグ（URL の `?flags=`）
 | フラグ | 既定 | 内容 |
