@@ -100,7 +100,7 @@ export class WorldView {
     fieldW: number,
     fieldH: number,
   ) {
-    gfx.scene.add(this.bg.mesh);
+    gfx.bgScene.add(this.bg.mesh);
     gfx.scene.add(this.glyphs.mesh);
     if (particleMax > 0) {
       this.particles = new Particles(particleMax, fieldW, fieldH);

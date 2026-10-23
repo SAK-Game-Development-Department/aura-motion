@@ -1,6 +1,9 @@
 // Shared ranking (mocked API): a play sends exactly the allowed fields to the
 // same-origin /api, and the results screen shows the nationwide placement.
 import { expect, test } from '@playwright/test';
+
+// Full plays: give each test room under parallel load.
+test.describe.configure({ timeout: 240_000 });
 import { waitFor } from './helpers';
 import { SUBMISSION_KEYS } from '../../src/exhibit/scorePolicy';
 
@@ -47,6 +50,8 @@ test('the on-screen keys type a name (゛ modifies the last kana); a bad word is
   await page.goto('/?source=autoplay&fast=1&flags=-particles&onlinetest=1');
   await page.route('**/api/**', (r) => r.fulfill({ status: 404, body: '' }));
   await waitFor(page, (s) => s.phase === 'results', 150_000);
+  // Wait until the bot's hand has left (it would type with its fingertip otherwise).
+  await waitFor(page, (s) => !s.present, 20_000);
   const key = (k: string) => page.locator(`.ne-key[data-key="${k}"]`).click();
   for (const k of ['バ', 'カ']) {
     if (k === 'バ') {
@@ -63,4 +68,17 @@ test('the on-screen keys type a name (゛ modifies the last kana); a bad word is
   await key('決定');
   await expect(page.locator('.name-entry')).toBeHidden();
   await expect(page.locator('.res .nick')).toHaveText('タツヤ');
+});
+
+test('lowering the hands does not end the name entry (regression)', async ({ page }) => {
+  await page.goto('/?source=autoplay&fast=1&flags=-particles');
+  await waitFor(page, (s) => s.phase === 'results', 150_000);
+  await expect(page.locator('.name-entry')).toBeVisible();
+  // The bot's hand leaves after ~1 s; the old code skipped 3 s later.
+  await page.waitForTimeout(5000);
+  expect((await page.evaluate(() => (window as unknown as { __aura: { inspect(): { present: boolean } } }).__aura.inspect().present))).toBe(false);
+  await expect(page.locator('.name-entry')).toBeVisible();
+  await page.locator('.ne-input').fill('ミラ');
+  await page.locator('.ne-input').press('Enter');
+  await expect(page.locator('.res .nick')).toHaveText('ミラ');
 });

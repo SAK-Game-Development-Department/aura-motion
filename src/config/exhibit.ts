@@ -24,8 +24,8 @@ export const TRACKING = {
   fieldW: 192,
   fieldH: 108,
   /** Camera request. */
-  // 60 fps when the camera can: fresher frames (the tracker keeps only the latest).
-  camera: { width: 1280, height: 720, frameRate: 60 },
+  // 30 fps: hand recognition runs on the GPU too; 60 doubled its load (motion is predicted for drawing anyway).
+  camera: { width: 1280, height: 720, frameRate: 30 },
   /** Below this mean hand detection score, tracking counts as unstable. */
   unstableScore: 0.7,
   /** Frame luma (0..1) below which the room is "dark". */
@@ -58,6 +58,8 @@ export const SETTINGS = {
     /** Chromatic aberration ("lens") pass. */
     lens: true,
     particles: 'auto' as 'auto' | 'low' | 'mid' | 'high',
+    /** Render resolution (device-pixel cap). Lower = lighter. */
+    resolution: 'standard' as 'low' | 'standard' | 'high',
     techLens: 'auto' as 'auto' | 'on' | 'off',
     /** Easier two-hand poses while the game waits for one. */
     sealAssist: true,
@@ -67,6 +69,7 @@ export const SETTINGS = {
     sound: true,
     sfxVolume: 0.7,
     ambientVolume: 0.5,
+    musicVolume: 0.45,
   },
   ranges: {
     brightness: [0.4, 1.3],
@@ -75,7 +78,10 @@ export const SETTINGS = {
     effects: [0, 1],
     sfxVolume: [0, 1],
     ambientVolume: [0, 1],
+    musicVolume: [0, 1],
   },
   /** Particle presets → RENDER.particleLevels index. */
   particleLevel: { low: 0, mid: 2, high: 4 },
+  /** 画質 → device pixel ratio cap. */
+  pixelCap: { low: 0.7, standard: 1, high: 1.5 },
 } as const;

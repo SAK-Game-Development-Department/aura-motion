@@ -232,3 +232,5 @@ body.calm .cutin .kanji { animation-name: kanjiCalm !important; }
 .ne-key.ok { border-color: var(--amber); color: var(--amber); }
 .ne-hint { font-size: 1.9vh; color: var(--dim); margin-top: 1vh; }
 .ne-cursor { position: fixed; left: 0; top: 0; width: 2.6vh; height: 2.6vh; margin: -1.3vh 0 0 -1.3vh; border-radius: 50%; background: rgba(255,180,63,.35); border: 2px solid var(--amber); box-shadow: 0 0 1.4vh var(--amber); opacity: 0; pointer-events: none; z-index: 5; }
+
+.ne-cursor.idle { background: none; opacity: .5 !important; border-style: dashed; box-shadow: none; }

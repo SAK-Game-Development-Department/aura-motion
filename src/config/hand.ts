@@ -17,7 +17,11 @@ export const HAND = {
   keyDwellMs: 650,
   keyRepeatMs: 450,
   /** Name entry is skipped after this long without any input (ms). */
-  nameIdleMs: 25_000,
+  nameIdleMs: 45_000,
+  /** Countdown shown for the last part of the idle time (ms). */
+  nameCountdownMs: 10_000,
+  /** Fingertip area (view 0..1) stretched over the whole on-screen keyboard. */
+  keyReach: { x0: 0.2, x1: 0.8, y0: 0.25, y1: 0.7 },
   /** Booth considered empty after no hand for this long (ms). */
   absentReturnMs: 10_000,
   /** Hold-to-select buttons: pointer = index fingertip. */

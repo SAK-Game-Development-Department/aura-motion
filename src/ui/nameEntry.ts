@@ -62,7 +62,7 @@ export class NameEntry {
     this.root.innerHTML = `<div class="ne-head">名前を入れてランキングに登録</div>
       <div class="ne-box"><input type="text" class="ne-input" maxlength="${NAME_MAX * 2}" autocomplete="off" spellcheck="false" aria-label="名前"><span class="ne-count"></span></div>
       <div class="ne-msg"></div><div class="ne-kbd"></div>
-      <div class="ne-hint">指先をキーの上で止めると入力 ・ キーボードでも入力できます（Enter で決定）</div>`;
+      <div class="ne-hint">人差し指を立てて（指す）、キーの上で止めると入力 ・ マウスやキーボードでも入力できます（Enter で決定）</div>`;
     this.input = this.root.querySelector('.ne-input')!;
     this.msg = this.root.querySelector('.ne-msg')!;
     this.kbd = this.root.querySelector('.ne-kbd')!;
@@ -96,6 +96,8 @@ export class NameEntry {
     this.mode = 'kana';
     this.build();
     this.root.classList.add('on');
+    document.body.classList.add('cursor');
+    this.setCountdown(null);
     this.lastActivity = now;
     this.refresh();
     // Physical keyboard: type straight away.
@@ -106,6 +108,7 @@ export class NameEntry {
   hide(): void {
     this.open = false;
     this.root.classList.remove('on');
+    document.body.classList.remove('cursor');
     this.input.blur();
     this.hover = null;
   }
@@ -185,8 +188,30 @@ export class NameEntry {
     this.onDone(null);
   }
 
+  /**
+   * Hands-free pointer from the fingertip in view coordinates (0..1). The
+   * comfortable middle of the camera view is stretched over the keyboard, so
+   * every key is reachable with the hand at chest height (the bottom of the
+   * frame, where the keys are on screen, is where hands get lost).
+   */
+  pointerView(v: { x: number; y: number } | null, now: number, typing = true): void {
+    if (!v) return this.pointer(null, now);
+    const r = this.kbd.getBoundingClientRect();
+    const R = HAND.keyReach;
+    const u = Math.min(1, Math.max(0, (v.x - R.x0) / (R.x1 - R.x0)));
+    const w = Math.min(1, Math.max(0, (v.y - R.y0) / (R.y1 - R.y0)));
+    this.pointer({ x: r.left + u * r.width, y: r.top + w * r.height }, now, typing);
+  }
+
+  /** Remaining seconds before the entry is skipped (null = no countdown shown). */
+  setCountdown(sec: number | null): void {
+    const el = this.root.querySelector('.ne-head') as HTMLElement;
+    el.textContent = sec === null ? '名前を入れてランキングに登録' : `名前を入れてランキングに登録（あと ${sec} 秒で登録せずに終了）`;
+  }
+
   /** Hands-free pointer: the index fingertip in CSS pixels (null = no hand). */
-  pointer(p: { x: number; y: number } | null, now: number): void {
+  /** `typing` false: the cursor moves but keys do not fill (the hand is not pointing). */
+  pointer(p: { x: number; y: number } | null, now: number, typing = true): void {
     if (!this.open) return;
     this.cursor.style.opacity = p ? '1' : '0';
     if (!p) {
@@ -194,7 +219,9 @@ export class NameEntry {
       return;
     }
     this.cursor.style.transform = `translate(${p.x.toFixed(0)}px, ${p.y.toFixed(0)}px)`;
-    const hit = this.rects.find((r) => p.x >= r.l && p.x <= r.r && p.y >= r.t && p.y <= r.b) ?? null;
+    const found = this.rects.find((r) => p.x >= r.l && p.x <= r.r && p.y >= r.t && p.y <= r.b) ?? null;
+    this.cursor.classList.toggle('idle', !typing);
+    const hit = typing ? found : null;
     this.setHover(hit, now);
     if (hit) {
       this.lastActivity = now;

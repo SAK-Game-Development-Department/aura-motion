@@ -1,6 +1,6 @@
 // Renderer bootstrap: WebGPU first, WebGL2 fallback (same TSL code paths).
 import * as THREE from 'three/webgpu';
-import { pass, uniform, uv, length, float, vec2, vec4, smoothstep } from 'three/tsl';
+import { pass, texture, uniform, uv, length, float, vec2, vec4, smoothstep } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 
@@ -13,6 +13,16 @@ export type Backend = 'webgpu' | 'webgl2';
 
 export class Gfx {
   readonly scene = new THREE.Scene();
+  /**
+   * The background (soft noise, full of per-pixel work) is drawn into a smaller
+   * render target and shown in the main scene as one textured quad — a quarter
+   * of the pixels at RENDER.backgroundScale 0.5, and it looks the same.
+   */
+  readonly bgScene = new THREE.Scene();
+  private bgTarget: THREE.RenderTarget;
+  private bgQuad: THREE.Mesh;
+  /** Device-pixel-ratio cap (staff "画質" setting). */
+  pixelCap: number = RENDER.pixelRatioCap;
   readonly camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, -10, 10);
   readonly layout = new Layout();
   pipeline: THREE.RenderPipeline;
@@ -31,6 +41,15 @@ export class Gfx {
   ) {
     this.scene.background = new THREE.Color(PALETTE.voidDeep);
     this.camera.position.z = 5;
+    this.bgScene.background = new THREE.Color(PALETTE.voidDeep);
+    this.bgTarget = new THREE.RenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false });
+    const bgMat = new THREE.MeshBasicNodeMaterial({ depthWrite: false, depthTest: false });
+    bgMat.colorNode = texture(this.bgTarget.texture) as N;
+    this.bgQuad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), bgMat);
+    this.bgQuad.position.z = -4.99; // inside the camera range (z 5 ± 10)
+    this.bgQuad.renderOrder = -200;
+    this.bgQuad.frustumCulled = false;
+    this.scene.add(this.bgQuad);
     const scenePass = pass(this.scene, this.camera);
     const color = scenePass.getTextureNode('output');
     const b = bloom(color, RENDER.bloom.strength, RENDER.bloom.radius, RENDER.bloom.threshold);
@@ -85,17 +104,30 @@ export class Gfx {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.layout.resize(w, h, cameraAspect ?? this.layout.ca);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5) * this.resScale);
+    const pr = Math.min(window.devicePixelRatio || 1, this.pixelCap) * this.resScale;
+    this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
+    this.bgTarget.setSize(Math.max(4, Math.round(w * pr * RENDER.backgroundScale)), Math.max(4, Math.round(h * pr * RENDER.backgroundScale)));
     const sa = this.layout.sa;
     this.camera.left = -sa / 2;
     this.camera.right = sa / 2;
     this.camera.top = 0.5;
     this.camera.bottom = -0.5;
     this.camera.updateProjectionMatrix();
+    this.bgQuad.scale.set(sa, 1, 1);
+  }
+
+  setPixelCap(cap: number): void {
+    if (cap === this.pixelCap) return;
+    this.pixelCap = cap;
+    this.resize();
   }
 
   render(): void {
+    const r = this.renderer;
+    r.setRenderTarget(this.bgTarget);
+    r.render(this.bgScene, this.camera);
+    r.setRenderTarget(null);
     this.pipeline.render();
   }
 

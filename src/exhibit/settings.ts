@@ -10,12 +10,14 @@ export type Settings = {
   effects: number;
   lens: boolean;
   particles: 'auto' | 'low' | 'mid' | 'high';
+  resolution: 'low' | 'standard' | 'high';
   techLens: 'auto' | 'on' | 'off';
   sealAssist: boolean;
   online: boolean;
   sound: boolean;
   sfxVolume: number;
   ambientVolume: number;
+  musicVolume: number;
 };
 
 const KEY = 'aura.settings.v1';
@@ -40,12 +42,14 @@ export function sanitize(raw: unknown): Settings {
     effects: clamp(r.effects, R.effects, d.effects),
     lens: bool(r.lens, d.lens),
     particles: oneOf(r.particles, ['auto', 'low', 'mid', 'high'] as const, d.particles),
+    resolution: oneOf(r.resolution, ['low', 'standard', 'high'] as const, d.resolution),
     techLens: oneOf(r.techLens, ['auto', 'on', 'off'] as const, d.techLens),
     sealAssist: bool(r.sealAssist, d.sealAssist),
     online: bool(r.online, d.online),
     sound: bool(r.sound, d.sound),
     sfxVolume: clamp(r.sfxVolume, R.sfxVolume, d.sfxVolume),
     ambientVolume: clamp(r.ambientVolume, R.ambientVolume, d.ambientVolume),
+    musicVolume: clamp(r.musicVolume, R.musicVolume, d.musicVolume),
   };
 }
 

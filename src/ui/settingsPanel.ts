@@ -3,8 +3,8 @@
 import { SETTINGS } from '../config';
 import { defaultSettings, type Settings } from '../exhibit/settings';
 
-type Num = 'brightness' | 'glow' | 'background' | 'effects' | 'sfxVolume' | 'ambientVolume';
-type Choice = 'particles' | 'techLens';
+type Num = 'brightness' | 'glow' | 'background' | 'effects' | 'sfxVolume' | 'ambientVolume' | 'musicVolume';
+type Choice = 'particles' | 'techLens' | 'resolution';
 type Flag = 'lens' | 'sealAssist' | 'online' | 'sound';
 
 const NUMS: Array<{ k: Num; label: string; hint: string }> = [
@@ -13,9 +13,11 @@ const NUMS: Array<{ k: Num; label: string; hint: string }> = [
   { k: 'background', label: '背景の明るさ', hint: '背景の模様・色の強さ' },
   { k: 'effects', label: '演出の強さ', hint: 'フラッシュ・揺れ・ズーム・色ずれ' },
   { k: 'sfxVolume', label: '効果音の音量', hint: '技・命中・撃破・ボスなど' },
+  { k: 'musicVolume', label: 'BGM の音量', hint: 'ステージごとの音楽（敵が来る拍に合わせて鳴る）' },
   { k: 'ambientVolume', label: '環境音の音量', hint: 'ステージごとの静かな背景の音' },
 ];
 const CHOICES: Array<{ k: Choice; label: string; opts: Array<[string, string]> }> = [
+  { k: 'resolution', label: '画質（重いときは下げる）', opts: [['low', '軽い'], ['standard', '標準'], ['high', '高精細']] },
   { k: 'particles', label: '粒子の数', opts: [['auto', '自動'], ['low', '少なめ'], ['mid', 'ふつう'], ['high', '多め']] },
   { k: 'techLens', label: 'テックレンズ', opts: [['auto', '自動'], ['on', '常に表示'], ['off', '表示しない']] },
 ];

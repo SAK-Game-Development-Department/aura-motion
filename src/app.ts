@@ -36,6 +36,7 @@ import { TechLens } from './ui/techLens';
 import { SettingsPanel } from './ui/settingsPanel';
 import { NameEntry } from './ui/nameEntry';
 import { Sound } from './audio/sound';
+import { Music } from './audio/music';
 import { GUEST_NAME } from './exhibit/playerName';
 import { loadSettings, saveSettings, type Settings } from './exhibit/settings';
 import { battleBot } from './battle/bot';
@@ -134,6 +135,7 @@ export class App {
   private namedAt = 0;
   private nameEntry!: NameEntry;
   private sound!: Sound;
+  private music!: Music;
   private lastSelHover: number | null = null;
   private demoBattle: { session: BattleSession; start: number } | null = null;
   private lastUi: UiRequest = { marks: [] };
@@ -175,6 +177,7 @@ export class App {
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
     this.sound.unlock();
+    this.music = new Music(this.sound);
     this.online = new OnlineRanking(this.rt.flags.online && this.settings.online);
     if (this.rt.debug) this.debug.toggle(true);
 
@@ -354,11 +357,13 @@ export class App {
     this.applyCalm();
     this.gfx.setEffects(this.quality.state.effects && this.rt.flags.fx, this.quality.state.lens && s.lens);
     this.world.particles?.setCount(this.particleCount());
+    this.gfx.setPixelCap(SETTINGS.pixelCap[s.resolution]);
     this.lensMode = s.techLens;
     if (this.online) this.online.enabled = this.rt.flags.online && s.online;
     if (this.sound) {
       if (this.sound.enabled !== s.sound) this.sound.setEnabled(s.sound);
       this.sound.setVolumes(s.sfxVolume, s.ambientVolume);
+      this.sound.setMusicVolume(s.musicVolume);
     }
   }
 
@@ -768,10 +773,14 @@ export class App {
         if (this.nameEntry.visible) {
           // Hands-free typing: the index fingertip is the pointer.
           const h = g?.hands[0];
-          this.nameEntry.pointer(h ? this.gfx.layout.viewToScreen(this.world.predictor.predict(h, now).tip) : null, now);
+          // Only a pointing index finger types (a resting hand must not type by accident).
+          this.nameEntry.pointerView(h ? this.world.predictor.predict(h, now).tip : null, now, h?.decision.shape === 'point');
           const idle = now - Math.max(this.phaseAt, this.nameEntry.lastActivity);
           // Skip when the player left (and nobody is typing) or after a long idle.
-          if ((this.presence.absentFor(now) > 3000 && idle > 3000) || idle > this.rt.nameIdleMs) this.nameEntry.skip();
+          // Only a long time without any input skips the entry (players lower their hands when the game ends — that is fine).
+          const left = this.rt.nameIdleMs - idle;
+          this.nameEntry.setCountdown(left < HAND.nameCountdownMs ? Math.max(0, Math.ceil(left / 1000)) : null);
+          if (left <= 0) this.nameEntry.skip();
         } else if (now - this.namedAt > this.rt.resultsMs) this.setPhase('title');
         break;
       }
@@ -830,6 +839,7 @@ export class App {
       this.breakdown['track.fld'] = st.fieldMs;
     }
     this.sound.setTheme(this.world.theme);
+    this.updateMusic(now);
     this.sound.setDuck(this.phase === 'title' && this.demo ? SOUND.attractDuck : 1);
     this.lens.setVisible(!this.nameEntry.visible && (this.lensMode === 'on' || (this.lensMode === 'auto' && (this.phase === 'title' || this.phase === 'results'))));
     if (this.lens.visible) {
@@ -853,13 +863,30 @@ export class App {
     }
   }
 
+  /** Which piece plays: the stage's own music on its beat in play, calm pieces in the menus. */
+  private updateMusic(now: number): void {
+    const level: Record<string, number> = { intro: 0, rush: 1, guard: 2, boss: 3, hidden: 4 };
+    if (this.phase === 'play' && this.battle) {
+      const b = this.battle;
+      const hidden = b.section === 'hidden';
+      this.music.set(hidden ? 'hidden' : b.stage.stageId, level[b.section ?? 'intro'] ?? 0, { beatMs: b.stage.beatMs, anchor: this.playStart + this.offsetMs });
+    } else if (this.phase === 'title' && this.demoBattle) {
+      const db = this.demoBattle;
+      this.music.set(db.session.stage.stageId, Math.min(2, level[db.session.section ?? 'intro'] ?? 0), { beatMs: db.session.stage.beatMs, anchor: db.start });
+    } else if (this.phase === 'calibrate') this.music.set(this.stageId, 0);
+    else if (this.phase === 'results') this.music.set('results', 0);
+    else if (this.phase === 'loading' || this.phase === 'error') this.music.stop();
+    else this.music.set('title', 0);
+    this.music.tick(now);
+  }
+
   /** Sound for battle events (the picture is drawn by BattleView). */
   private playBattleSounds(bev: BattleEvent[], ui: UiRequest): void {
     const S = this.sound;
     for (const e of bev) {
       if (e.type === 'cast') {
         if (e.ev.type === 'seal') S.play('seal');
-        else S.play('cast', { pitch: e.matched ? 1 : 0.8, gain: e.matched ? 1 : 0.6 });
+        else S.play('cast', { pitch: e.matched ? 1 : 0.8, gain: e.matched ? 1 : 0.6, variant: e.tech?.effect });
       } else if (e.type === 'hit') {
         if (e.kill) S.play('kill', { pitch: e.boss ? 0.7 : 1 });
         else if (e.boss) S.play('bossHit');

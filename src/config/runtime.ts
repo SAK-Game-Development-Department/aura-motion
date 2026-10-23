@@ -73,7 +73,7 @@ export function readRuntime(search: string): Runtime {
     attractDelayMs: fast ? 1500 : 3000,
     startHoldMs: fast ? 800 : HAND.startHoldMs,
     selectHoldMs: fast ? 700 : HAND.selectHoldMs,
-    nameIdleMs: fast ? 2500 : HAND.nameIdleMs,
+    nameIdleMs: fast ? 8000 : HAND.nameIdleMs,
     calibPulses: fast ? 3 : LATENCY.calibPulses,
     calibIntervalMs: LATENCY.calibIntervalMs,
   };

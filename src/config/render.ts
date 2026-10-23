@@ -3,7 +3,11 @@ export const RENDER = {
   /** Particle budget presets (index = quality level). */
   particleLevels: [30_000, 60_000, 100_000, 150_000, 250_000, 400_000],
   /** Start level for unknown / integrated GPUs. */
-  startLevel: 3,
+  startLevel: 2,
+  /** Device pixel ratio cap (HiDPI screens: 1 = one render pixel per CSS pixel). */
+  pixelRatioCap: 1,
+  /** Background render-target scale (it is soft noise — a quarter of the pixels looks the same). */
+  backgroundScale: 0.5,
   /** WebGL2 fallback cap. */
   webglMaxLevel: 2,
   /** Internal resolution scale levels (applied after particles bottom out). */
@@ -22,7 +26,7 @@ export const QUALITY = {
   targetFrameMs: 16.7,
   /** Downgrade if EMA frame time exceeds this for `downAfterMs`. */
   downThresholdMs: 18.5,
-  downAfterMs: 1500,
+  downAfterMs: 900,
   /** Upgrade if EMA is below this for `upAfterMs`. */
   upThresholdMs: 13.0,
   upAfterMs: 8000,
