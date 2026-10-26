@@ -60,8 +60,8 @@ describe('rank', () => {
     };
     expect(at(10, 0, 0)).toBe('S');
     expect(at(5, 3, 2)).toBe('A'); // (5 + 2.25) / 10
-    expect(at(5, 2, 3)).toBe('B'); // (5 + 1.5) / 10
-    expect(at(3, 2, 5)).toBe('C'); // (3 + 1.5) / 10
+    expect(at(4, 1, 5)).toBe('B'); // (4 + 0.75) / 10
+    expect(at(3, 1, 6)).toBe('C'); // (3 + 0.75) / 10
     expect(at(2, 1, 7)).toBe('D'); // (2 + 0.75) / 10
     expect(at(0, 0, 0)).toBe('D');
   });

@@ -26,7 +26,7 @@ export const JUDGE = {
   scoreGood: 120,
   /** Rank: weighted accuracy (GOOD counts this much of a PERFECT) needed for S / A / B / C (below = D). Same for every stage. */
   goodWeight: 0.75,
-  rankAt: [0.85, 0.7, 0.55, 0.4] as readonly [number, number, number, number],
+  rankAt: [0.8, 0.62, 0.45, 0.3] as readonly [number, number, number, number],
   /** Combo multiplier: 1 + floor(combo / step) * add, capped. */
   comboStep: 8,
   comboAdd: 0.1,
