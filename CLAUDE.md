@@ -22,7 +22,7 @@
 | 展示用ZIP | `npm run zip` |
 
 URLパラメータ（開発・スタッフ用）: `?source=camera|synth|autoplay|mouse|replay|empty`、`?flags=-sigils,+qr`、`?onehand=1`、`?stage=easy|normal|hard`（難易度の固定。選択画面を飛ばす）、`?debug=1`、`?calm=1`、`?webgl=1`、
-`?quality=0..5`（S キーで設定パネル: 明るさ・演出・粒子など）、`?particles=N`、`?vt=1`（仮想時間。遅い GPU でスクショを撮るとき）、`?bench=1`、`?fast=1`（時間短縮。テスト用）
+`?quality=0..5`（S キーか右下の「⚙ 設定」で設定パネル: 明るさ・演出・粒子・ポーズのアシストなど）、`?particles=N`、`?vt=1`（仮想時間。遅い GPU でスクショを撮るとき）、`?bench=1`、`?fast=1`（時間短縮。テスト用）
 
 ヘッドレスで描画を確認するときの Chromium の起動オプション: `--enable-unsafe-webgpu --use-angle=swiftshader --enable-features=Vulkan --use-vulkan=swiftshader`。
 SwiftShader は粒子が多いと 1fps 以下になるので、E2E は `flags=-particles` で動かし、粒子の見た目は `?vt=1&particles=12000` で確認する。

@@ -209,6 +209,13 @@ body.calm .cutin .kanji { animation-name: kanjiCalm !important; }
 .settings select, .settings button { font: inherit; color: var(--white); background: rgba(244,247,255,.08); border: 1px solid rgba(244,247,255,.2); border-radius: 8px; padding: 6px 10px; }
 .settings .btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
 .settings button { cursor: pointer; }
+.settings h2 { display: flex; align-items: baseline; }
+.settings h2 .x { margin-left: auto; padding: 0 12px; font-size: 22px; line-height: 1.3; }
+.settings-btn { position: fixed; right: 2vw; bottom: 4.5vh; z-index: 49; display: flex; align-items: center; gap: .4em; padding: 8px 14px; font: 15px var(--font); color: var(--white);
+  background: rgba(6,8,22,.6); border: 1px solid rgba(244,247,255,.2); border-radius: 999px; opacity: .45; cursor: pointer; pointer-events: auto; transition: opacity 200ms, border-color 200ms; }
+.settings-btn span { font-size: 18px; line-height: 1; }
+.settings-btn:hover, .settings-btn:focus-visible { opacity: 1; border-color: var(--cyan); }
+.settings-btn.on { display: none; }
 .settings button:hover { border-color: var(--cyan); }
 
 /* Name entry (results) */

@@ -24,8 +24,8 @@ const CHOICES: Array<{ k: Choice; label: string; opts: Array<[string, string]> }
 const FLAGS: Array<{ k: Flag; label: string; hint: string }> = [
   { k: 'sound', label: '音を出す', hint: 'ブラウザの制限で、最初にクリックかキーを押すまで鳴らないことがある' },
   { k: 'lens', label: '色ずれ（レンズ効果）', hint: '大技で画面の端の色がずれる' },
-  { k: 'sealAssist', label: '両手ポーズのアシスト', hint: '求められている両手ポーズを決めやすくする' },
-  { k: 'online', label: '全国ランキングに送る', hint: 'スコアと自動ニックネームだけを送信' },
+  { k: 'sealAssist', label: '手のポーズのアシスト', hint: '敵が待っている手の形・動き・両手ポーズを決めやすくする' },
+  { k: 'online', label: '全国ランキングに送る', hint: 'スコアと入れた名前だけを送信' },
 ];
 
 export class SettingsPanel {
@@ -33,6 +33,8 @@ export class SettingsPanel {
   private inputs = new Map<string, HTMLInputElement | HTMLSelectElement>();
   private outs = new Map<string, HTMLElement>();
   private open = false;
+  /** Always-visible button that opens/closes the panel (mouse / touch). */
+  readonly button: HTMLButtonElement;
 
   constructor(
     parent: HTMLElement,
@@ -43,7 +45,7 @@ export class SettingsPanel {
     el.className = 'settings';
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', '設定');
-    const rows: string[] = ['<h2>設定 <small>S で閉じる・この端末に保存</small></h2>'];
+    const rows: string[] = ['<h2>設定 <small>S キーでも開閉・この端末に保存</small><button type="button" class="x" data-act="close" aria-label="閉じる">×</button></h2>'];
     for (const n of NUMS) {
       const [lo, hi] = SETTINGS.ranges[n.k];
       rows.push(`<label class="row"><span class="lb">${n.label}<em>${n.hint}</em></span><input type="range" data-k="${n.k}" min="${lo}" max="${hi}" step="0.05"><output data-k="${n.k}"></output></label>`);
@@ -71,6 +73,14 @@ export class SettingsPanel {
     });
     parent.appendChild(el);
     this.root = el;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'settings-btn';
+    b.setAttribute('aria-label', '設定を開く');
+    b.innerHTML = '<span aria-hidden="true">⚙</span>設定';
+    b.addEventListener('click', () => this.toggle());
+    parent.appendChild(b);
+    this.button = b;
   }
 
   get visible(): boolean {
@@ -80,6 +90,7 @@ export class SettingsPanel {
   toggle(on = !this.open): void {
     this.open = on;
     this.root.classList.toggle('on', on);
+    this.button.classList.toggle('on', on);
     document.body.classList.toggle('cursor', on);
     if (on) this.sync();
   }
