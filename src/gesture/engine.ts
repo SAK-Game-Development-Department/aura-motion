@@ -108,6 +108,10 @@ interface HandCtx {
   recent: { shape: ShapeId; since: number; until: number } | null;
   /** Since when the stance shape has been *strongly* recognised (≥ enterConf) without a break. */
   strongSince: number | null;
+  /** Pose assist: since when the stance has dipped below the bar (short dips keep the charge). */
+  weakSince: number | null;
+  /** When the last static cast fired. */
+  spentAt: number;
 }
 
 export class GestureEngine {
@@ -117,6 +121,9 @@ export class GestureEngine {
   private sealDet = new SealDetector();
   /** Seals the game is waiting for right now (assist: easier to form). Set by the game each frame. */
   expectSeals: ReadonlySet<SealKind> = new Set();
+  /** Single-hand shapes the game is waiting for (pose assist), and those that need a motion. Set by the game each frame. */
+  expectShapes: ReadonlySet<ShapeId> = new Set();
+  expectMotionShapes: ReadonlySet<ShapeId> = new Set();
   /** Last two-hand pair while a seal was forming (pressed hands can make one vanish briefly). */
   private sealLatch: { hands: [GestureHand, GestureHand]; t: number } | null = null;
   classifier: Classifier;
@@ -169,6 +176,8 @@ export class GestureEngine {
           lastTip: null,
           recent: null,
           strongSince: null,
+          weakSince: null,
+          spentAt: -Infinity,
         };
         this.ctx.set(h.slot, c);
         events.push({ type: "handIn", t, hand: h.slot });
@@ -179,7 +188,9 @@ export class GestureEngine {
       const feat = features(norm);
       const decision = c.stab.update(
         this.classifier.classify(feat, this.thresholds, this.opts.shapes),
+        this.expectShapes,
       );
+      c.motion.ease = c.stance && this.expectMotionShapes.has(c.stance) ? GESTURE.shapeAssist.motionEase : 1;
       const mot = this.opts.motions
         ? c.motion.update(t, h.palm, h.tip, h.size, asp)
         : null;
@@ -342,11 +353,30 @@ export class GestureEngine {
       events.push({ type: "stance", t, hand: h.slot, shape, conf: d.conf });
     }
     if (!c.stance) return;
+    // Pose assist: keeping the shape the game is waiting for re-arms it (the
+    // next enemy wants the same shape — players hold it rather than re-form it).
+    if (
+      c.state === "spent" &&
+      shape === c.stance &&
+      this.expectShapes.has(c.stance) &&
+      t - c.spentAt >= GESTURE.shapeAssist.rearmMs
+    ) {
+      c.state = "stance";
+      c.strongSince = null;
+    }
     const charge = Math.min(1, (t - c.since) / GESTURE.chargeMs);
     // Static casts need the shape held *strongly* for the whole charge (the
     // hysteresis band alone would let a brief accidental shape linger and fire).
-    if (shape === c.stance && d.conf >= GESTURE.enterConf) c.strongSince ??= t;
-    else c.strongSince = null;
+    const enter = this.expectShapes.has(c.stance) ? GESTURE.shapeAssist.enterConf : GESTURE.enterConf;
+    if (shape === c.stance && d.conf >= enter) {
+      c.strongSince ??= t;
+      c.weakSince = null;
+    } else if (enter === GESTURE.enterConf || shape !== c.stance) c.strongSince = null;
+    else {
+      // Pose assist: a frame or two of flicker does not restart the charge.
+      c.weakSince ??= t;
+      if (t - c.weakSince > GESTURE.shapeAssist.dipMs) c.strongSince = null;
+    }
     const strongCharge =
       c.strongSince !== null
         ? Math.min(1, (t - c.strongSince) / GESTURE.chargeMs)
@@ -408,6 +438,7 @@ export class GestureEngine {
         charge: 1,
       });
       c.state = "spent";
+      c.spentAt = t;
     }
   }
 

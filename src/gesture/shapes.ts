@@ -128,7 +128,8 @@ export class ShapeStabilizer {
     this.candN = 0;
   }
 
-  update(scores: Scores): ShapeDecision {
+  /** `expect`: shapes the game is waiting for (pose assist: lower bar, wins near-ties). */
+  update(scores: Scores, expect?: ReadonlySet<ShapeId>): ShapeDecision {
     let best: ShapeId | null = null;
     let bestC = 0;
     let second = 0;
@@ -139,7 +140,24 @@ export class ShapeStabilizer {
         best = id;
       } else if (c > second) second = c;
     }
-    const strong = best !== null && bestC >= GESTURE.enterConf && bestC - second >= GESTURE.margin ? best : null;
+    const A = GESTURE.shapeAssist;
+    // Pose assist: an expected shape close behind the best one takes its place.
+    if (expect?.size && best && !expect.has(best)) {
+      for (const id of expect) {
+        const c = scores[id] ?? 0;
+        if (c >= A.enterConf && bestC - c < A.tieBreak) {
+          // The near-tie is the point here: no margin over the shape it beat.
+          second = 0;
+          bestC = c;
+          best = id;
+          break;
+        }
+      }
+    }
+    const assisted = !!best && !!expect?.has(best);
+    const enter = assisted ? A.enterConf : GESTURE.enterConf;
+    const margin = assisted ? A.margin : GESTURE.margin;
+    const strong = best !== null && bestC >= enter && bestC - second >= margin ? best : null;
     if (strong && strong !== this.current) {
       if (this.cand === strong) this.candN++;
       else {
@@ -147,8 +165,8 @@ export class ShapeStabilizer {
         this.candN = 1;
       }
       // Switching away from a held shape is stricter than acquiring one.
-      const need = this.current ? GESTURE.switchFrames : GESTURE.stableFrames;
-      const currentWeak = !this.current || (scores[this.current] ?? 0) < GESTURE.enterConf;
+      const need = assisted ? A.stableFrames : this.current ? GESTURE.switchFrames : GESTURE.stableFrames;
+      const currentWeak = !this.current || assisted || (scores[this.current] ?? 0) < GESTURE.enterConf;
       if (this.candN >= need && currentWeak) {
         this.current = strong;
         this.cand = null;
@@ -158,7 +176,8 @@ export class ShapeStabilizer {
       this.cand = null;
       this.candN = 0;
     }
-    if (this.current && (scores[this.current] ?? 0) < GESTURE.exitConf) this.current = null;
+    const exit = this.current && expect?.has(this.current) ? A.exitConf : GESTURE.exitConf;
+    if (this.current && (scores[this.current] ?? 0) < exit) this.current = null;
     return { shape: this.current, conf: this.current ? (scores[this.current] ?? 0) : 0, best, bestConf: bestC, scores };
   }
 }

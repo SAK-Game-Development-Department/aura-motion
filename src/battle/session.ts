@@ -6,6 +6,7 @@ import type { GestureEvent } from '../gesture/engine';
 import { Difficulty } from '../game/difficulty';
 import { applyGrade, newScore, type Grade, type ScoreState } from '../game/score';
 import type { SealKind } from '../gesture/seals';
+import type { ShapeId } from '../gesture/handModel';
 import { Rng } from '../core/rng';
 import type { BattleStage, Enemy, SectionKind, Step } from './stage';
 import { effectiveReq, matches, TECH, TECHNIQUES, type Req, type Technique } from './techniques';
@@ -105,6 +106,26 @@ export class BattleSession {
       if (step.t === null ? now >= a.e.arrive - 300 : now >= step.t - JUDGE.sealAssistLeadMs && now <= step.t + JUDGE.goodMs * this.windowScale * JUDGE.sealWindowScale) out.add(r.seal);
     }
     return out;
+  }
+
+  /**
+   * Single-hand shapes the player is expected to form now or soon (pose
+   * assist), and those of them that must be released by a motion.
+   */
+  expectedShapes(now: number, shapes: Set<ShapeId>, motions: Set<ShapeId>): void {
+    shapes.clear();
+    motions.clear();
+    for (const a of this.enemies) {
+      if (a.state !== 'alive') continue;
+      const step = a.e.steps[a.step];
+      if (!step) continue;
+      const r = this.req(step.tech);
+      if (r.kind !== 'shape' && r.kind !== 'motion') continue;
+      const open = step.t === null ? now >= a.e.arrive - 300 : now >= step.t - JUDGE.sealAssistLeadMs && now <= step.t + JUDGE.goodMs * this.windowScale + JUDGE.lateGraceMs;
+      if (!open) continue;
+      shapes.add(r.shape);
+      if (r.kind === 'motion') motions.add(r.shape);
+    }
   }
 
   pushEvent(tGame: number, ev: GestureEvent): void {

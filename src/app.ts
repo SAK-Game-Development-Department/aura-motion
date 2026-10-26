@@ -127,6 +127,8 @@ export class App {
   /** Autoplay: stage the bot picks next (normal → hard → easy …). */
   private botVisits = 0;
   private sealSet = new Set<SealKind>();
+  private shapeSet = new Set<ShapeId>();
+  private motionShapeSet = new Set<ShapeId>();
   private playStart = 0;
   private sectionIdx = -1;
   private requireNewVisitor = false;
@@ -380,7 +382,11 @@ export class App {
     this.phase = p;
     if (this.world && p !== 'select') this.world.theme = p === 'results' ? 'stars' : p === 'play' || p === 'calibrate' ? STAGES[this.stageId].themes.intro : 'lake';
     this.phaseAt = this.clock();
-    if (p !== 'play') this.engine.expectSeals = new Set();
+    if (p !== 'play') {
+      this.engine.expectSeals = new Set();
+      this.engine.expectShapes = new Set();
+      this.engine.expectMotionShapes = new Set();
+    }
     if (p !== 'results' && this.nameEntry?.visible) {
       this.nameEntry.hide();
       this.hud.setNaming(false);
@@ -774,6 +780,13 @@ export class App {
         const gt = now - this.playStart;
         for (const e of events) b.pushEvent(e.t - this.playStart - this.offsetMs, e);
         this.engine.expectSeals = this.settings.sealAssist ? b.expectedSeals(gt, this.sealSet) : new Set();
+        if (this.settings.sealAssist) b.expectedShapes(gt, this.shapeSet, this.motionShapeSet);
+        else {
+          this.shapeSet.clear();
+          this.motionShapeSet.clear();
+        }
+        this.engine.expectShapes = this.shapeSet;
+        this.engine.expectMotionShapes = this.motionShapeSet;
         const bev = b.update(gt);
         this.handleBattleEvents(bev, now, gt, g);
         ghost = this.tutorialGhost(b, gt, g);

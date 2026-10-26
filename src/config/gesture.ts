@@ -53,6 +53,25 @@ export const GESTURE = {
   sigilAccept: 0.75,
   sigilMargin: 0.05,
   sigilEndStillMs: 260,
+  /**
+   * Pose assist: while an enemy waits for a shape (or shape + motion), that
+   * shape is accepted at a lower bar and wins near-ties, and its motion needs
+   * less travel/speed. Other shapes keep the normal bar (no stray casts).
+   */
+  shapeAssist: {
+    enterConf: 0.5,
+    exitConf: 0.32,
+    margin: 0.03,
+    /** The expected shape wins over a runner-up that beats it by less than this. */
+    tieBreak: 0.12,
+    stableFrames: 1,
+    /** A dip below the bar shorter than this keeps the charge going. */
+    dipMs: 140,
+    /** Holding an expected shape after it fired casts it again after this long (plus the charge). */
+    rearmMs: 600,
+    /** Motion thresholds × this (swipe distance/speed, push/pull ratio, flick speed). */
+    motionEase: 0.7,
+  },
   /** Two-hand seals (印). */
   seal: {
     holdMs: 280,

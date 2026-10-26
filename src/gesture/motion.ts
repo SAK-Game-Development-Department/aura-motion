@@ -52,6 +52,8 @@ const OPPOSITE: Record<MotionKind, MotionKind | null> = {
 };
 
 export class MotionDetector {
+  /** 1 = normal thresholds; < 1 = easier (pose assist: the game waits for a motion). */
+  ease = 1;
   private hist: Sample[] = [];
   private lastEvent = -Infinity;
   private lastKind: MotionKind | null = null;
@@ -108,8 +110,8 @@ export class MotionDetector {
       const dy = (cur.palm.y - a.palm.y) / unit;
       const d = Math.hypot(dx, dy);
       if (
-        d >= GESTURE.swipeDist &&
-        d / Math.max(dt, 1e-3) >= GESTURE.swipeMinSpeed
+        d >= GESTURE.swipeDist * this.ease &&
+        d / Math.max(dt, 1e-3) >= GESTURE.swipeMinSpeed * this.ease
       ) {
         const horiz = Math.abs(dx) >= Math.abs(dy) * 1.6;
         const vert = Math.abs(dy) >= Math.abs(dx) * 1.6;
@@ -140,13 +142,15 @@ export class MotionDetector {
       const move =
         Math.hypot(cur.palm.x - a.palm.x, cur.palm.y - a.palm.y) / unit;
       if (move > 1.5) continue;
-      if (ratio >= GESTURE.pushRatio)
+      const pushR = 1 + (GESTURE.pushRatio - 1) * this.ease;
+      const pullR = 1 - (1 - GESTURE.pullRatio) * this.ease;
+      if (ratio >= pushR)
         return {
           kind: "push",
           t,
           quality: Math.min(1, (ratio - 1) / (GESTURE.pushRatio - 1) / 1.5),
         };
-      if (ratio <= GESTURE.pullRatio)
+      if (ratio <= pullR)
         return {
           kind: "pull",
           t,
@@ -168,7 +172,7 @@ export class MotionDetector {
         Math.hypot(cur.palm.x - a.palm.x, cur.palm.y - a.palm.y) /
         unit /
         Math.max(dt, 1e-3);
-      if (tipSpeed >= GESTURE.flickSpeed && palmSpeed < tipSpeed * 0.35)
+      if (tipSpeed >= GESTURE.flickSpeed * this.ease && palmSpeed < tipSpeed * 0.35)
         return {
           kind: "flick",
           t,
